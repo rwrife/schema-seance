@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -9,6 +11,9 @@ from rich.text import Text
 
 from . import __version__
 from .persona import GREETING_TAGLINE, GREETING_TITLE, greeting_panel_body
+from .profile import profile as profile_relation
+from .readers import UnsupportedFormatError, load
+from .render.terminal import render as render_terminal
 
 
 def _print_greeting(console: Console) -> None:
@@ -34,18 +39,30 @@ def main(ctx: click.Context) -> None:
 
 
 @main.command()
-@click.argument("path", type=click.Path(exists=False))
-def summon(path: str) -> None:
-    """Summon the schema of a data file. (Coming in M2.)"""
+@click.argument(
+    "path",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+def summon(path: Path) -> None:
+    """Summon the schema of a data file (CSV or JSONL for now)."""
     console = Console()
-    console.print(
-        Panel(
-            f"The spirits stir, but their voices are not yet clear for [bold]{path}[/bold].\n"
-            "Readers arrive in [italic]M2[/italic] — see PLAN.md.",
-            title="🔮 Madame Schema",
-            border_style="magenta",
+    try:
+        relation = load(path)
+    except UnsupportedFormatError as exc:
+        console.print(
+            Panel(
+                f"The spirits recoil. {exc}\n"
+                "Supported in M2: [bold].csv[/bold], [bold].tsv[/bold], "
+                "[bold].jsonl[/bold], [bold].ndjson[/bold]. "
+                "Parquet + SQLite arrive in [italic]M3[/italic].",
+                title="🔮 Madame Schema",
+                border_style="red",
+            )
         )
-    )
+        raise SystemExit(2) from exc
+
+    report = profile_relation(relation, path=path)
+    render_terminal(report, console=console)
 
 
 if __name__ == "__main__":  # pragma: no cover

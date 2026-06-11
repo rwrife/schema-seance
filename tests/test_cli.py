@@ -21,7 +21,23 @@ def test_version_flag() -> None:
     assert __version__ in result.output
 
 
-def test_summon_placeholder() -> None:
-    result = CliRunner().invoke(main, ["summon", "ghosts.csv"])
-    assert result.exit_code == 0
-    assert "ghosts.csv" in result.output
+def test_summon_missing_file_errors() -> None:
+    result = CliRunner().invoke(main, ["summon", "definitely-not-here.csv"])
+    assert result.exit_code != 0
+
+
+def test_summon_csv_renders_sections(tmp_path) -> None:
+    csv = tmp_path / "ghosts.csv"
+    csv.write_text("id,name\n1,Alice\n2,Bob\n")
+    result = CliRunner().invoke(main, ["summon", str(csv)])
+    assert result.exit_code == 0, result.output
+    assert "The Veil Parts" in result.output
+    assert "The Spirits Speak" in result.output
+    assert "name" in result.output
+
+
+def test_summon_unsupported_extension_errors(tmp_path) -> None:
+    weird = tmp_path / "ouija.xyz"
+    weird.write_text("nope")
+    result = CliRunner().invoke(main, ["summon", str(weird)])
+    assert result.exit_code == 2

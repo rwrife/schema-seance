@@ -6,7 +6,7 @@ A spooky little CLI that channels schemas, PII, and anomalies out of CSV,
 JSONL, Parquet, and SQLite files. Madame Schema is your medium; DuckDB is
 her crystal ball.
 
-**Status:** early WIP — M1 scaffold landed. See [PLAN.md](./PLAN.md) for the
+**Status:** early WIP — M1 scaffold + M2 readers landed. See [PLAN.md](./PLAN.md) for the
 full design and milestones.
 
 ## Install
@@ -45,6 +45,21 @@ $ seance
 
 The `summon` command is wired up but only echoes a placeholder until M2
 brings the readers online.
+
+## Summoning a file (M2)
+
+`seance summon` now reads CSV/TSV and JSONL/NDJSON files via DuckDB and
+prints two sections:
+
+- **The Veil Parts** — rows, columns, size, encoding.
+- **The Spirits Speak** — per column: dtype, null %, a sample value.
+
+```bash
+uv run seance summon tests/fixtures/tiny.csv
+```
+
+Parquet, SQLite, full per-column profiling, PII whispers, and anomaly
+hints arrive in later milestones.
 
 ## Development
 
