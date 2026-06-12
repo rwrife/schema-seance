@@ -8,7 +8,7 @@ shape below changes in a backwards-incompatible way.
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "file": {
     "path": "data.csv",        // string | null
     "size_bytes": 12345,        // int | null
@@ -38,6 +38,22 @@ shape below changes in a backwards-incompatible way.
   "top": [
     { "value": "alice@example.com", "count": 1 },
     { "value": "carol@example.com", "count": 1 }
+  ],
+  "pii": [
+    {
+      "kind": "email",           // email|phone|credit_card|ssn|ipv4|ipv6|name|dob
+      "confidence": 0.95,         // float in [0, 1]
+      "match_ratio": 1.0,         // float in [0, 1]
+      "matched": 2,                // int — values that matched the detector
+      "sampled": 2                 // int — non-null values inspected
+    }
+  ],
+  "anomalies": [
+    {
+      "kind": "high_nulls",       // high_nulls|mixed_types|pk_duplicates|numeric_outliers
+      "severity": "warn",         // info|warn|high
+      "detail": "75% of values are NULL (>= 50%)."
+    }
   ]
 }
 ```
@@ -50,6 +66,23 @@ shape below changes in a backwards-incompatible way.
 - Nested types (struct/list/map) currently emit `null` for `min`/`max` and
   may emit `[]` for `top` when DuckDB can't aggregate them.
 - `NaN` / `Infinity` are coerced to `null` to stay valid JSON.
+
+## Confidence bands
+
+`pii[].confidence` is mapped to a band by `seance` and by the
+`--fail-on-pii` flag:
+
+| Band     | Confidence ≥ |
+| -------- | ------------ |
+| `low`    | 0.30         |
+| `medium` | 0.60         |
+| `high`   | 0.85         |
+
+Exit-code contract:
+
+- `0` — success.
+- `2` — input unreadable / unsupported.
+- `3` — `--fail-on-pii` set and a finding met or exceeded the band.
 
 ## Stability contract
 

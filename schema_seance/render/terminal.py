@@ -7,6 +7,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from ..pii import confidence_band
 from ..profile import ColumnProfile, ProfileReport
 
 
@@ -102,6 +103,81 @@ def render(report: ProfileReport, console: Console | None = None) -> None:
         Panel(
             spirits,
             title=Text("👻 The Spirits Speak", style="bold magenta"),
+            border_style="magenta",
+            padding=(1, 2),
+        )
+    )
+
+    _render_pii(report, console)
+    _render_anomalies(report, console)
+
+
+_BAND_STYLE = {
+    "high": "bold red",
+    "medium": "yellow",
+    "low": "dim white",
+    "none": "dim",
+}
+
+_SEVERITY_STYLE = {
+    "high": "bold red",
+    "warn": "yellow",
+    "info": "cyan",
+}
+
+
+def _render_pii(report: ProfileReport, console: Console) -> None:
+    rows = [(col, f) for col in report.columns for f in col.pii if f.confidence > 0]
+    if not rows:
+        return
+    table = Table(header_style="bold magenta", expand=True, show_lines=False)
+    table.add_column("Column", style="bold", no_wrap=True)
+    table.add_column("Kind", style="cyan", no_wrap=True)
+    table.add_column("Band", no_wrap=True)
+    table.add_column("Confidence", justify="right")
+    table.add_column("Match", justify="right")
+    for col, finding in sorted(rows, key=lambda r: -r[1].confidence):
+        band = confidence_band(finding.confidence)
+        style = _BAND_STYLE.get(band, "white")
+        table.add_row(
+            col.name,
+            finding.kind,
+            f"[{style}]{band}[/{style}]",
+            f"{finding.confidence:.2f}",
+            f"{finding.matched}/{finding.sampled}",
+        )
+    console.print(
+        Panel(
+            table,
+            title=Text("🔮 Whispers of the Personal", style="bold magenta"),
+            border_style="magenta",
+            padding=(1, 2),
+        )
+    )
+
+
+def _render_anomalies(report: ProfileReport, console: Console) -> None:
+    rows = [(col, a) for col in report.columns for a in col.anomalies]
+    if not rows:
+        return
+    table = Table(header_style="bold magenta", expand=True, show_lines=False)
+    table.add_column("Column", style="bold", no_wrap=True)
+    table.add_column("Kind", style="cyan", no_wrap=True)
+    table.add_column("Severity", no_wrap=True)
+    table.add_column("Detail", overflow="fold")
+    severity_rank = {"high": 0, "warn": 1, "info": 2}
+    for col, anomaly in sorted(rows, key=lambda r: severity_rank.get(r[1].severity, 9)):
+        style = _SEVERITY_STYLE.get(anomaly.severity, "white")
+        table.add_row(
+            col.name,
+            anomaly.kind,
+            f"[{style}]{anomaly.severity}[/{style}]",
+            anomaly.detail,
+        )
+    console.print(
+        Panel(
+            table,
+            title=Text("⚡ Restless Anomalies", style="bold magenta"),
             border_style="magenta",
             padding=(1, 2),
         )
