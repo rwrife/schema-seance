@@ -1,0 +1,4 @@
+id,name,email,score
+1,Alice,alice@example.com,9.5
+2,Bob,,7.25
+3,Carol,carol@example.com,
