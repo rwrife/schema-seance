@@ -6,8 +6,8 @@ A spooky little CLI that channels schemas, PII, and anomalies out of CSV,
 JSONL, Parquet, and SQLite files. Madame Schema is your medium; DuckDB is
 her crystal ball.
 
-**Status:** early WIP — M1 scaffold + M2 readers landed. See [PLAN.md](./PLAN.md) for the
-full design and milestones.
+**Status:** early WIP — M1 scaffold, M2 readers, M3 full profiling landed. See
+[PLAN.md](./PLAN.md) for the full design and milestones.
 
 ## Install
 
@@ -43,23 +43,32 @@ $ seance
 ╰─────────────────────────────────────────────────────────────────────╯
 ```
 
-The `summon` command is wired up but only echoes a placeholder until M2
-brings the readers online.
+## Summoning a file
 
-## Summoning a file (M2)
-
-`seance summon` now reads CSV/TSV and JSONL/NDJSON files via DuckDB and
-prints two sections:
+`seance summon` reads CSV/TSV, JSONL/NDJSON, Parquet, and SQLite files via
+DuckDB and prints two sections:
 
 - **The Veil Parts** — rows, columns, size, encoding.
-- **The Spirits Speak** — per column: dtype, null %, a sample value.
+- **The Spirits Speak** — per column: dtype, null %, distinct count, min,
+  max, mean, stddev, and top values.
 
 ```bash
 uv run seance summon tests/fixtures/tiny.csv
+uv run seance summon path/to/data.parquet
+uv run seance summon path/to/data.sqlite --table events
+uv run seance summon big.csv --sample 100000
+uv run seance summon big.csv --json | jq '.columns[] | select(.null_pct > 50)'
 ```
 
-Parquet, SQLite, full per-column profiling, PII whispers, and anomaly
-hints arrive in later milestones.
+### Flags
+
+- `--table NAME` — pick a SQLite table (defaults to the first one).
+- `--sample N` — profile only the first `N` rows. Reported `rows` and
+  `sampled`/`sample_size` reflect this.
+- `--json` — emit a stable, versioned JSON document instead of the Rich
+  view. See [`docs/json-schema.md`](./docs/json-schema.md).
+
+PII whispers and anomaly hints arrive in later milestones.
 
 ## Development
 
