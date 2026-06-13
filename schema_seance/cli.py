@@ -11,6 +11,7 @@ from rich.text import Text
 
 from . import __version__
 from .persona import GREETING_TAGLINE, GREETING_TITLE, greeting_panel_body
+from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
 from .readers import SQLiteTableError, UnsupportedFormatError, load
 from .render.json import dumps as dumps_json
@@ -64,7 +65,22 @@ def main(ctx: click.Context) -> None:
     default=False,
     help="Emit a stable JSON document instead of the pretty terminal view.",
 )
-def summon(path: Path, table: str | None, sample: int | None, as_json: bool) -> None:
+@click.option(
+    "--fail-on-pii",
+    "fail_on_pii",
+    type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+    default=None,
+    help=(
+        "Exit non-zero (code 3) when any PII finding meets or exceeds the given confidence band."
+    ),
+)
+def summon(
+    path: Path,
+    table: str | None,
+    sample: int | None,
+    as_json: bool,
+    fail_on_pii: str | None,
+) -> None:
     """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite)."""
     console = Console()
     try:
@@ -96,9 +112,29 @@ def summon(path: Path, table: str | None, sample: int | None, as_json: bool) -> 
 
     if as_json:
         click.echo(dumps_json(report))
-        return
+    else:
+        render_terminal(report, console=console)
 
-    render_terminal(report, console=console)
+    if fail_on_pii is not None:
+        threshold = CONFIDENCE_BANDS[fail_on_pii.lower()]
+        worst = 0.0
+        worst_kind = None
+        worst_col = None
+        for col in report.columns:
+            for finding in col.pii:
+                if finding.confidence > worst:
+                    worst = finding.confidence
+                    worst_kind = finding.kind
+                    worst_col = col.name
+        if worst >= threshold:
+            if not as_json:
+                console.print(
+                    f"[bold red]The veil refuses you.[/bold red] "
+                    f"{worst_kind} in column '{worst_col}' "
+                    f"(confidence {worst:.2f} ≥ {fail_on_pii} threshold "
+                    f"{threshold:.2f})."
+                )
+            raise SystemExit(3)
 
 
 if __name__ == "__main__":  # pragma: no cover

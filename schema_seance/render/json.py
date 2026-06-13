@@ -56,6 +56,19 @@ def _column_to_dict(col: ColumnProfile) -> dict[str, Any]:
         "mean": _jsonable(col.mean),
         "stddev": _jsonable(col.stddev),
         "top": [{"value": _jsonable(t.value), "count": t.count} for t in col.top],
+        "pii": [
+            {
+                "kind": f.kind,
+                "confidence": f.confidence,
+                "match_ratio": f.match_ratio,
+                "matched": f.matched,
+                "sampled": f.sampled,
+            }
+            for f in col.pii
+        ],
+        "anomalies": [
+            {"kind": a.kind, "severity": a.severity, "detail": a.detail} for a in col.anomalies
+        ],
     }
 
 

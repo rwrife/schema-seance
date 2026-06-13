@@ -124,6 +124,8 @@ def test_json_render_has_stable_shape() -> None:
         "mean",
         "stddev",
         "top",
+        "pii",
+        "anomalies",
     }
     for col in payload["columns"]:
         assert set(col.keys()) == expected_col_keys
@@ -143,6 +145,11 @@ def test_json_snapshot_csv() -> None:
     # Sort each column's top list by (value-str, count) for stability.
     for col in payload["columns"]:
         col["top"] = sorted(col["top"], key=lambda t: (str(t["value"]), -t["count"]))
+        # Strip dynamic detector output from the snapshot — covered by
+        # dedicated PII / anomaly tests. Snapshot stays focused on shape
+        # and stable per-column stats.
+        col["pii"] = []
+        col["anomalies"] = []
     expected = {
         "schema_version": PROFILE_SCHEMA_VERSION,
         "file": {"path": "tiny.csv", "size_bytes": 999, "encoding": "utf-8"},
@@ -165,6 +172,8 @@ def test_json_snapshot_csv() -> None:
                     [{"value": 1, "count": 1}, {"value": 2, "count": 1}, {"value": 3, "count": 1}],
                     key=lambda t: (str(t["value"]), -t["count"]),
                 ),
+                "pii": [],
+                "anomalies": [],
             },
             {
                 "name": "name",
@@ -184,6 +193,8 @@ def test_json_snapshot_csv() -> None:
                     ],
                     key=lambda t: (str(t["value"]), -t["count"]),
                 ),
+                "pii": [],
+                "anomalies": [],
             },
             {
                 "name": "email",
@@ -202,6 +213,8 @@ def test_json_snapshot_csv() -> None:
                     ],
                     key=lambda t: (str(t["value"]), -t["count"]),
                 ),
+                "pii": [],
+                "anomalies": [],
             },
             {
                 "name": "score",
@@ -217,6 +230,8 @@ def test_json_snapshot_csv() -> None:
                     [{"value": 7.25, "count": 1}, {"value": 9.5, "count": 1}],
                     key=lambda t: (str(t["value"]), -t["count"]),
                 ),
+                "pii": [],
+                "anomalies": [],
             },
         ],
     }

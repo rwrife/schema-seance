@@ -16,6 +16,11 @@ from typing import Any
 
 import duckdb
 
+from .anomalies import Anomaly
+from .anomalies import detect_column as detect_anomalies
+from .pii import PIIFinding
+from .pii import detect_column as detect_pii
+
 __all__ = [
     "ColumnProfile",
     "ProfileReport",
@@ -24,7 +29,10 @@ __all__ = [
 ]
 
 # Bumped when the JSON output schema changes in a breaking way.
-PROFILE_SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 2
+
+# How many values to pull for PII/anomaly heuristics per column.
+_DETECT_SAMPLE = 500
 
 
 _NUMERIC_PREFIXES = (
@@ -68,6 +76,8 @@ class ColumnProfile:
     mean: float | None = None
     stddev: float | None = None
     top: tuple[TopValue, ...] = ()
+    pii: tuple[PIIFinding, ...] = ()
+    anomalies: tuple[Anomaly, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -186,6 +196,37 @@ def _profile_column(
     except duckdb.Error:
         top = ()
 
+    # Pull a value sample for PII/anomaly heuristics.
+    sample_values: list = []
+    numeric_values: list[float] = []
+    try:
+        sample_rows = relation.query(
+            "rel",
+            (f"SELECT {qname} AS v FROM rel WHERE {qname} IS NOT NULL LIMIT {int(_DETECT_SAMPLE)}"),
+        ).fetchall()
+        sample_values = [r[0] for r in sample_rows]
+        if numeric:
+            for v in sample_values:
+                try:
+                    numeric_values.append(float(v))
+                except (TypeError, ValueError):
+                    continue
+    except duckdb.Error:
+        sample_values = []
+
+    pii_findings = tuple(detect_pii(name, dtype, sample_values))
+    anomaly_findings = tuple(
+        detect_anomalies(
+            name=name,
+            dtype=dtype,
+            rows=rows,
+            distinct=distinct,
+            null_pct=null_pct,
+            values=sample_values,
+            numeric_values=numeric_values if numeric else None,
+        )
+    )
+
     return ColumnProfile(
         name=name,
         dtype=dtype,
@@ -197,6 +238,8 @@ def _profile_column(
         mean=mean_v,
         stddev=std_v,
         top=top,
+        pii=pii_findings,
+        anomalies=anomaly_findings,
     )
 
 
