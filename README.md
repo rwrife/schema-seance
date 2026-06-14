@@ -86,6 +86,41 @@ uv run seance summon people.csv --fail-on-pii high   # CI smoke check
 | `0`  | Profile completed successfully.                                        |
 | `2`  | Input is unsupported, unreadable, or `--table` doesn't exist.          |
 | `3`  | `--fail-on-pii` was set and a finding met or exceeded that confidence. |
+| `4`  | `seance read` could not reach (or got nothing usable from) the LLM.    |
+
+## Optional: ask the LLM for a reading
+
+`seance read <file>` runs the same profile, then asks an OpenAI-compatible
+chat endpoint for a three-paragraph “reading” in Madame Schema’s voice.
+Nothing in this command touches the network until you invoke it, and the
+standard `summon` path never reaches for an LLM.
+
+Configure the provider via environment variables:
+
+| Variable               | Required | Example                              |
+| ---------------------- | -------- | ------------------------------------ |
+| `SEANCE_LLM_BASE_URL`  | yes      | `https://api.openai.com/v1` / `http://localhost:11434/v1` |
+| `SEANCE_LLM_MODEL`     | yes      | `gpt-4o-mini` / `llama3:8b`          |
+| `SEANCE_LLM_API_KEY`   | no       | `sk-…` (skip for most local providers) |
+
+```bash
+# OpenAI
+export SEANCE_LLM_BASE_URL=https://api.openai.com/v1
+export SEANCE_LLM_API_KEY=sk-…
+export SEANCE_LLM_MODEL=gpt-4o-mini
+uv run seance read path/to/data.csv
+
+# Local Ollama
+export SEANCE_LLM_BASE_URL=http://localhost:11434/v1
+export SEANCE_LLM_MODEL=llama3:8b
+uv run seance read path/to/data.csv --no-show-profile
+```
+
+Flags: `--timeout SECONDS` (default 30) hard-caps the request;
+`--no-show-profile` skips the standard rendered profile and shows only the
+reading. Token counts (and a USD cost estimate for known OpenAI models) are
+printed under the reading panel. If the call fails or times out, the
+command exits **4** without ever printing a half-baked response.
 
 ## Development
 

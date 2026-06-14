@@ -10,6 +10,9 @@ from rich.panel import Panel
 from rich.text import Text
 
 from . import __version__
+from .llm import LLMUnavailableError
+from .llm import load_config as load_llm_config
+from .llm import read as llm_read
 from .persona import GREETING_TAGLINE, GREETING_TITLE, greeting_panel_body
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
@@ -135,6 +138,118 @@ def summon(
                     f"{threshold:.2f})."
                 )
             raise SystemExit(3)
+
+
+@main.command()
+@click.argument(
+    "path",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option(
+    "--table",
+    "table",
+    default=None,
+    help="Table name to read (SQLite only). Defaults to the first table.",
+)
+@click.option(
+    "--sample",
+    "sample",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Profile only the first N rows. Useful on huge files.",
+)
+@click.option(
+    "--timeout",
+    "timeout",
+    type=click.FloatRange(min=1.0),
+    default=30.0,
+    show_default=True,
+    help="Hard timeout (seconds) for the LLM call.",
+)
+@click.option(
+    "--show-profile/--no-show-profile",
+    "show_profile",
+    default=True,
+    show_default=True,
+    help="Print the standard profile before the reading.",
+)
+def read(
+    path: Path,
+    table: str | None,
+    sample: int | None,
+    timeout: float,
+    show_profile: bool,
+) -> None:
+    """Profile a file, then ask an LLM for a 3-paragraph reading."""
+    console = Console()
+    try:
+        relation = load(path, table=table)
+    except UnsupportedFormatError as exc:
+        console.print(
+            Panel(
+                f"The spirits recoil. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
+    except SQLiteTableError as exc:
+        console.print(
+            Panel(
+                f"The spirits cannot find that table. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
+
+    report = profile_relation(relation, path=path, sample=sample)
+    if show_profile:
+        render_terminal(report, console=console)
+
+    try:
+        config = load_llm_config(timeout=timeout)
+    except LLMUnavailableError as exc:
+        console.print(
+            Panel(
+                f"The veil stays drawn. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="yellow",
+            )
+        )
+        raise SystemExit(4) from exc
+
+    try:
+        result = llm_read(report, config)
+    except LLMUnavailableError as exc:
+        console.print(
+            Panel(
+                f"The spirits would not speak through {config.model}. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="yellow",
+            )
+        )
+        raise SystemExit(4) from exc
+
+    console.print(
+        Panel(
+            result.text,
+            title=Text("\U0001f52e A Reading", style="bold magenta"),
+            border_style="magenta",
+            padding=(1, 2),
+        )
+    )
+
+    bits: list[str] = [f"model=[bold]{result.model}[/bold]"]
+    if result.total_tokens is not None:
+        bits.append(
+            f"tokens={result.total_tokens} "
+            f"(prompt {result.prompt_tokens}, completion {result.completion_tokens})"
+        )
+    if result.cost_usd is not None:
+        bits.append(f"cost \u2248 ${result.cost_usd:.4f}")
+    bits.append(f"in {result.elapsed_seconds:.2f}s")
+    console.print("  " + " \u00b7 ".join(bits), style="dim")
 
 
 if __name__ == "__main__":  # pragma: no cover
