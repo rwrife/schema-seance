@@ -133,6 +133,27 @@ uv run pytest
 
 CI runs the same on Python 3.11 and 3.12 via GitHub Actions.
 
+## Releasing
+
+Releases are tag-driven. Pushing a `vX.Y.Z` tag triggers
+[`.github/workflows/release.yml`](./.github/workflows/release.yml), which builds
+the sdist + wheel and publishes to PyPI via OIDC trusted publishing (no API
+token stored in the repo). Before tagging:
+
+1. Bump `version` in `pyproject.toml` and `schema_seance/__init__.py`.
+2. Move the `[Unreleased]` entries in [CHANGELOG.md](./CHANGELOG.md) under a new
+   `vX.Y.Z` section, dated.
+3. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. The workflow uploads the build; cut the GitHub release from the tag with the
+   changelog excerpt as the notes.
+
+The PyPI project (`schema-seance`) must have this repo configured as a
+trusted publisher for the `pypi` environment.
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md).
+
 ## License
 
 MIT.
