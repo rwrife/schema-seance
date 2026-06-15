@@ -9,6 +9,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - `CHANGELOG.md` and a tag-driven release workflow that publishes wheels +
   sdists to PyPI via OIDC trusted publishing.
+- Rich-rendered SVG demo screenshots embedded in the README (greeting +
+  `seance summon tests/fixtures/tiny.csv`), regenerable via
+  `uv run python docs/demo/generate.py`.
+- README install section now documents `pipx install schema-seance` and
+  plain `pip install schema-seance` alongside the `uv` dev flow.
 
 ## [0.1.0] — TBD
 

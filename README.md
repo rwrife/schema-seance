@@ -21,30 +21,29 @@ uv sync
 uv run seance
 ```
 
-Or with `pipx` once published:
+Or with [`pipx`](https://pipx.pypa.io/) for an isolated install of the CLI
+(works once v0.1.0 is published — tracking in [#6](https://github.com/rwrife/schema-seance/issues/6)):
 
 ```bash
-pipx install schema-seance   # not yet on PyPI — see M6
+pipx install schema-seance
+seance --version
+```
+
+Or plain `pip` into any virtualenv:
+
+```bash
+pip install schema-seance
 ```
 
 ## Hello, Madame Schema
 
 Run `seance` with no arguments to summon the parlor:
 
-```bash
-$ seance
-╭─ 🔮 Madame Schema  ·  Medium of Messy Data ─────────────────────────╮
-│                                                                     │
-│  The parlor is dim. The candle gutters. Place your dataset on the   │
-│  velvet.                                                            │
-│  I sense… columns. Yes. Many columns. Some of them are lying to     │
-│  you.                                                               │
-│  Summon a file with seance summon <path> and we shall begin.        │
-│                                                                     │
-╰─────────────────────────────────────────────────────────────────────╯
-```
+![seance greeting](./docs/demo/greeting.svg)
 
 ## Summoning a file
+
+![seance summon tiny.csv](./docs/demo/summon-tiny.svg)
 
 `seance summon` reads CSV/TSV, JSONL/NDJSON, Parquet, and SQLite files via
 DuckDB and prints four sections:
