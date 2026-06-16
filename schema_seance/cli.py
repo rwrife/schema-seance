@@ -13,6 +13,7 @@ from . import __version__
 from .llm import LLMUnavailableError
 from .llm import load_config as load_llm_config
 from .llm import read as llm_read
+from .parlor import ParlorUnavailableError, build_app, load_session
 from .persona import GREETING_TAGLINE, GREETING_TITLE, greeting_panel_body
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
@@ -250,6 +251,61 @@ def read(
         bits.append(f"cost \u2248 ${result.cost_usd:.4f}")
     bits.append(f"in {result.elapsed_seconds:.2f}s")
     console.print("  " + " \u00b7 ".join(bits), style="dim")
+
+
+@main.command()
+@click.argument(
+    "path",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option(
+    "--table",
+    "table",
+    default=None,
+    help="Table name to read (SQLite only). Defaults to the first table.",
+)
+def parlor(path: Path, table: str | None) -> None:
+    """Open the interactive TUI parlor for a data file.
+
+    Browse columns, page through sample rows, and run ad-hoc SQL
+    against the file via DuckDB (registered as the view ``data``).
+    Requires the optional ``[tui]`` extra (``pip install schema-seance[tui]``).
+    """
+    console = Console()
+    try:
+        session = load_session(path, table=table)
+    except UnsupportedFormatError as exc:
+        console.print(
+            Panel(
+                f"The spirits recoil. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
+    except SQLiteTableError as exc:
+        console.print(
+            Panel(
+                f"The spirits cannot find that table. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
+
+    try:
+        app = build_app(session)
+    except ParlorUnavailableError as exc:
+        console.print(
+            Panel(
+                f"The parlor is shuttered. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="yellow",
+            )
+        )
+        raise SystemExit(4) from exc
+
+    app.run()
 
 
 if __name__ == "__main__":  # pragma: no cover

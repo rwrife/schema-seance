@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `seance parlor <file>` interactive TUI (Textual) — column browser, sample
+  preview, and ad-hoc DuckDB SQL against the `data` view. Ships behind the
+  optional `[tui]` extra.
 - `CHANGELOG.md` and a tag-driven release workflow that publishes wheels +
   sdists to PyPI via OIDC trusted publishing.
 - Rich-rendered SVG demo screenshots embedded in the README (greeting +

@@ -22,6 +22,11 @@ dependencies = [
     "duckdb>=1.0",
 ]
 
+[project.optional-dependencies]
+tui = [
+    "textual>=0.60",
+]
+
 [project.scripts]
 seance = "schema_seance.cli:main"
 
@@ -51,4 +56,5 @@ addopts = "-ra"
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    "textual>=0.60",
 ]
