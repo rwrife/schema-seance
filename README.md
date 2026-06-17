@@ -45,6 +45,17 @@ Run `seance` with no arguments to summon the parlor:
 
 ![seance summon tiny.csv](./docs/demo/summon-tiny.svg)
 
+Want motion? An animated walkthrough (greeting → `summon` → `--json`) is
+generated from [`docs/demo/seance.tape`](./docs/demo/seance.tape) with
+[VHS](https://github.com/charmbracelet/vhs):
+
+```bash
+vhs docs/demo/seance.tape   # writes docs/demo/seance.gif
+```
+
+The rendered `seance.gif` is committed alongside each release and embedded
+here once available.
+
 `seance summon` reads CSV/TSV, JSONL/NDJSON, Parquet, and SQLite files via
 DuckDB and prints four sections:
 
