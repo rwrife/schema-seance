@@ -121,6 +121,28 @@ reading. Token counts (and a USD cost estimate for known OpenAI models) are
 printed under the reading panel. If the call fails or times out, the
 command exits **4** without ever printing a half-baked response.
 
+## The parlor (interactive TUI)
+
+`seance parlor <file>` opens a keyboard-first Textual TUI: a column
+browser on the left, a paged sample of rows on the right, an SQL input
+below, and a results pane. The file is registered as the DuckDB view
+`data`, so any query against it works:
+
+```sql
+SELECT name, COUNT(*) FROM data GROUP BY name ORDER BY 2 DESC
+```
+
+Key bindings: `Enter` or `F5` run the query, `Ctrl+R` resets, `q` quits.
+Results are capped at 200 rows unless you supply an explicit `LIMIT`.
+
+The TUI is an **optional** extra so the base install stays small:
+
+```bash
+pipx install "schema-seance[tui]"
+# or
+pip install "schema-seance[tui]"
+```
+
 ## Development
 
 ```bash
