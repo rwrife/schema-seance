@@ -1,18 +1,17 @@
 [project]
 name = "schema-seance"
 version = "0.0.1"
-description = "Summon schemas, PII, and anomalies out of your data. A spooky little CLI medium."
+description = "A CLI medium for your messy data — summons schemas, PII, and anomalies from CSV/JSONL/Parquet/SQLite."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "rwrife" }]
-keywords = ["cli", "data", "schema", "profiling", "duckdb", "pii"]
+keywords = ["cli", "data", "profiling", "duckdb", "pii", "schema"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Utilities",
@@ -20,12 +19,12 @@ classifiers = [
 dependencies = [
     "click>=8.1",
     "rich>=13.7",
+    "duckdb>=1.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "ruff>=0.5",
+tui = [
+    "textual>=0.60",
 ]
 
 [project.scripts]
@@ -48,8 +47,14 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "W"]
-ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "textual>=0.60",
+]

@@ -1,26 +1,22 @@
-"""Madame Schema's voice — a small, swappable string library.
+"""Madame Schema's voice — a small bank of in-character strings.
 
-Future personas (Skeptic, Pirate, Noir Detective…) will register here.
+Kept deliberately tiny for M1. Future milestones add persona packs
+(see PLAN.md §8). All output passes through here so swapping voices later
+is a one-file change.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+GREETING_TITLE = "Madame Schema"
+GREETING_TAGLINE = "Medium of Messy Data"
 
-
-@dataclass(frozen=True)
-class Persona:
-    name: str
-    greeting: str
-    tagline: str
-
-
-MADAME_SCHEMA = Persona(
-    name="Madame Schema",
-    greeting="The veil is thin tonight…",
-    tagline="Place your hands on the dataset. The spirits will speak.",
+GREETING_LINES: tuple[str, ...] = (
+    "The parlor is dim. The candle gutters. Place your dataset on the velvet.",
+    "I sense… columns. Yes. Many columns. Some of them are lying to you.",
+    "Summon a file with [bold]seance summon <path>[/bold] and we shall begin.",
 )
 
 
-def default_persona() -> Persona:
-    return MADAME_SCHEMA
+def greeting_panel_body() -> str:
+    """Return the body text for the welcome panel as Rich markup."""
+    return "\n".join(GREETING_LINES)
