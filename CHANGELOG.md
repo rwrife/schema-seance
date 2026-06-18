@@ -7,6 +7,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `docs/demo/seance.tape` — [VHS](https://github.com/charmbracelet/vhs)
+  script that renders an animated `seance.gif` (greeting → `summon` →
+  `--json`) for the README. Run `vhs docs/demo/seance.tape` to regenerate.
 - `seance parlor <file>` interactive TUI (Textual) — column browser, sample
   preview, and ad-hoc DuckDB SQL against the `data` view. Ships behind the
   optional `[tui]` extra.
