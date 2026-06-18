@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Release workflow now runs a wheel-install smoke test before publishing
+  to PyPI: installs the built wheel into a clean venv, invokes
+  `seance --help`, and verifies `seance summon tests/fixtures/tiny.csv
+  --json` produces a parseable report (with `schema_version`). Catches
+  packaging regressions (missing data files, broken entry points, etc.)
+  before they ever hit users via `pipx install schema-seance`.
 - `docs/demo/seance.tape` — [VHS](https://github.com/charmbracelet/vhs)
   script that renders an animated `seance.gif` (greeting → `summon` →
   `--json`) for the README. Run `vhs docs/demo/seance.tape` to regenerate.
