@@ -176,8 +176,11 @@ token stored in the repo). Before tagging:
 2. Move the `[Unreleased]` entries in [CHANGELOG.md](./CHANGELOG.md) under a new
    `vX.Y.Z` section, dated.
 3. `git tag vX.Y.Z && git push origin vX.Y.Z`.
-4. The workflow uploads the build; cut the GitHub release from the tag with the
-   changelog excerpt as the notes.
+4. The workflow uploads the build, runs a wheel-install smoke test
+   (clean venv → `seance --help` → `seance summon ... --json`) so a
+   broken wheel fails *before* it reaches PyPI, then publishes via
+   OIDC. Cut the GitHub release from the tag with the changelog
+   excerpt as the notes.
 
 The PyPI project (`schema-seance`) must have this repo configured as a
 trusted publisher for the `pypi` environment.

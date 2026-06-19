@@ -33,9 +33,44 @@ jobs:
           name: dist
           path: dist/
 
+  smoke:
+    name: Wheel install smoke test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Install built wheel into a clean venv
+        run: |
+          python -m venv .smoke
+          .smoke/bin/pip install --upgrade pip
+          .smoke/bin/pip install dist/*.whl
+
+      - name: Verify CLI entry point
+        run: |
+          .smoke/bin/seance --help
+          .smoke/bin/seance --version || true
+
+      - name: Verify summon end-to-end
+        run: |
+          .smoke/bin/seance summon tests/fixtures/tiny.csv --json > /tmp/out.json
+          test -s /tmp/out.json
+          python -c "import json; d=json.load(open('/tmp/out.json')); assert isinstance(d, dict) and 'schema_version' in d, d"
+
   publish:
     name: Publish to PyPI
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     environment:
