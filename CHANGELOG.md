@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Homebrew formula template at `packaging/homebrew/schema-seance.rb`
+  (plus a `packaging/homebrew/README.md`) for serving `schema-seance` from
+  a third-party tap. Includes a `test do` block that runs `seance
+  --version` and `seance summon ... --json` so a broken bottle fails at
+  `brew test` instead of in the user's terminal. README install section
+  now documents the `brew tap rwrife/schema-seance` flow alongside
+  `pipx` and `pip`.
 - Release workflow now runs a wheel-install smoke test before publishing
   to PyPI: installs the built wheel into a clean venv, invokes
   `seance --help`, and verifies `seance summon tests/fixtures/tiny.csv

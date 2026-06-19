@@ -35,6 +35,14 @@ Or plain `pip` into any virtualenv:
 pip install schema-seance
 ```
 
+Or via [Homebrew](https://brew.sh/) (third-party tap, see
+[`packaging/homebrew/`](./packaging/homebrew/)):
+
+```bash
+brew tap rwrife/schema-seance https://github.com/rwrife/homebrew-schema-seance
+brew install schema-seance
+```
+
 ## Hello, Madame Schema
 
 Run `seance` with no arguments to summon the parlor:
