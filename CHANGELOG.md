@@ -34,7 +34,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - README install section now documents `pipx install schema-seance` and
   plain `pip install schema-seance` alongside the `uv` dev flow.
 
-## [0.1.0] — TBD
+## [0.1.0] — 2026-06-20
 
 First public preview. Madame Schema can read a file end-to-end.
 

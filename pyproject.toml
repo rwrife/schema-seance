@@ -1,6 +1,6 @@
 [project]
 name = "schema-seance"
-version = "0.0.1"
+version = "0.1.0"
 description = "A CLI medium for your messy data — summons schemas, PII, and anomalies from CSV/JSONL/Parquet/SQLite."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,7 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "rwrife" }]
 keywords = ["cli", "data", "profiling", "duckdb", "pii", "schema"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
