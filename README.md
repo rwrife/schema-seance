@@ -26,7 +26,7 @@ Or with [`pipx`](https://pipx.pypa.io/) for an isolated install of the CLI
 
 ```bash
 pipx install schema-seance
-seance --version
+seance --version  # 0.1.0
 ```
 
 Or plain `pip` into any virtualenv:
