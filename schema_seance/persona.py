@@ -1,22 +1,22 @@
-"""Madame Schema's voice — a small bank of in-character strings.
+"""Backwards-compatible shim around the persona-pack registry.
 
-Kept deliberately tiny for M1. Future milestones add persona packs
-(see PLAN.md §8). All output passes through here so swapping voices later
-is a one-file change.
+Originally this module hard-coded Madame Schema's voice. As of the
+persona-packs feature it delegates to :mod:`schema_seance.personas`,
+which is the new home for swappable voices. The names below are kept
+so existing imports (and tests) continue to work.
 """
 
 from __future__ import annotations
 
-GREETING_TITLE = "Madame Schema"
-GREETING_TAGLINE = "Medium of Messy Data"
+from .personas import DEFAULT_PERSONA_ID, PERSONAS
 
-GREETING_LINES: tuple[str, ...] = (
-    "The parlor is dim. The candle gutters. Place your dataset on the velvet.",
-    "I sense… columns. Yes. Many columns. Some of them are lying to you.",
-    "Summon a file with [bold]seance summon <path>[/bold] and we shall begin.",
-)
+_DEFAULT = PERSONAS[DEFAULT_PERSONA_ID]
+
+GREETING_TITLE = _DEFAULT.display_name
+GREETING_TAGLINE = _DEFAULT.tagline
+GREETING_LINES: tuple[str, ...] = _DEFAULT.greeting_lines
 
 
 def greeting_panel_body() -> str:
-    """Return the body text for the welcome panel as Rich markup."""
-    return "\n".join(GREETING_LINES)
+    """Return the default-persona greeting body as Rich markup."""
+    return _DEFAULT.greeting_body()

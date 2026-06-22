@@ -128,10 +128,38 @@ overall severity is the worst column severity; `--fail-on` exits with
 code **5** when it meets or exceeds the chosen level.
 
 
+## Personas
+
+The narrator's voice is swappable. Pass `--persona <id>` (any subcommand),
+or set `SEANCE_PERSONA=<id>` in the environment. List them with
+`seance personas`:
+
+| id            | Voice                                                  |
+| ------------- | ------------------------------------------------------ |
+| `madame`      | Madame Schema — deadpan Victorian medium (default).    |
+| `skeptic`     | Clinical analyst. No theatre, hedged claims.           |
+| `pirate`      | Cap'n Schema — salty data buccaneer.                   |
+| `noir`        | Detective Schema — first-person hard-boiled.           |
+| `corporate`   | PM Schema — buzzword-light stakeholder brief.          |
+| `shakespeare` | The Bard of Schema — faux early-modern English.        |
+
+Examples:
+
+```bash
+seance --persona pirate summon data.csv
+SEANCE_PERSONA=noir seance read data.csv
+seance --persona skeptic compare before.csv after.csv
+```
+
+Personas only affect text (greetings, panel titles, refusal phrases,
+and the LLM system prompt). They do not change PII rules, profile
+contents, JSON output, or exit codes — those stay stable for scripting.
+
 ## Optional: ask the LLM for a reading
 
 `seance read <file>` runs the same profile, then asks an OpenAI-compatible
-chat endpoint for a three-paragraph “reading” in Madame Schema’s voice.
+chat endpoint for a three-paragraph “reading” in your chosen persona's voice
+(Madame Schema by default).
 Nothing in this command touches the network until you invoke it, and the
 standard `summon` path never reaches for an LLM.
 

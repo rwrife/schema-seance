@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Persona packs: swappable narrator voices via `--persona <id>` or
+  `SEANCE_PERSONA` env. Ships with `madame` (default), `skeptic`,
+  `pirate`, `noir`, `corporate`, and `shakespeare`. New `seance personas`
+  subcommand lists them. Personas affect greetings, panel titles, refusal
+  phrases, and the LLM system prompt only; JSON output, exit codes, and
+  PII rules are unchanged. Closes #9.
 - `seance compare a b` command: profiles two files and emits a structured
   schema diff (column adds/removes, dtype drift, null/distinct/distribution
   shifts, PII appearance/disappearance) with per-column and overall
