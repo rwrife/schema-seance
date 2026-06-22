@@ -105,6 +105,28 @@ uv run seance summon people.csv --fail-on-pii high   # CI smoke check
 | `2`  | Input is unsupported, unreadable, or `--table` doesn't exist.          |
 | `3`  | `--fail-on-pii` was set and a finding met or exceeded that confidence. |
 | `4`  | `seance read` could not reach (or got nothing usable from) the LLM.    |
+| `5`  | `seance compare --fail-on` was set and the diff met that severity.     |
+
+## Compare two files
+
+`seance compare a.csv b.csv` profiles both files, then flags column
+adds/removes, dtype drift, null/distinct/distribution shifts, and PII
+appearing or disappearing. Great as a CI gate on data contracts.
+
+```bash
+uv run seance compare yesterday.csv today.csv
+uv run seance compare a.csv b.csv --json | jq '.summary'
+uv run seance compare a.parquet b.parquet --fail-on medium   # CI gate
+uv run seance compare old.sqlite new.sqlite \\
+    --before-table events --after-table events
+```
+
+Each column lands in one of four buckets — `added`, `removed`,
+`changed`, `unchanged` — with a per-column severity (`none`/`low`/
+`medium`/`high`) and a list of specific field changes. The diff's
+overall severity is the worst column severity; `--fail-on` exits with
+code **5** when it meets or exceeds the chosen level.
+
 
 ## Optional: ask the LLM for a reading
 

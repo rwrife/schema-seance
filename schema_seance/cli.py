@@ -10,6 +10,8 @@ from rich.panel import Panel
 from rich.text import Text
 
 from . import __version__
+from .diff import SEVERITY_BANDS
+from .diff import compare as compare_reports
 from .llm import LLMUnavailableError
 from .llm import load_config as load_llm_config
 from .llm import read as llm_read
@@ -18,6 +20,8 @@ from .persona import GREETING_TAGLINE, GREETING_TITLE, greeting_panel_body
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
 from .readers import SQLiteTableError, UnsupportedFormatError, load
+from .render.diff import dumps as dumps_diff_json
+from .render.diff import render_terminal as render_diff_terminal
 from .render.json import dumps as dumps_json
 from .render.terminal import render as render_terminal
 
@@ -251,6 +255,112 @@ def read(
         bits.append(f"cost \u2248 ${result.cost_usd:.4f}")
     bits.append(f"in {result.elapsed_seconds:.2f}s")
     console.print("  " + " \u00b7 ".join(bits), style="dim")
+
+
+def _load_and_profile(
+    console: Console,
+    path: Path,
+    *,
+    table: str | None,
+    sample: int | None,
+):
+    try:
+        relation = load(path, table=table)
+    except UnsupportedFormatError as exc:
+        console.print(
+            Panel(
+                f"The spirits recoil. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
+    except SQLiteTableError as exc:
+        console.print(
+            Panel(
+                f"The spirits cannot find that table. {exc}",
+                title="\U0001f52e Madame Schema",
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
+    return profile_relation(relation, path=path, sample=sample)
+
+
+@main.command()
+@click.argument(
+    "before",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.argument(
+    "after",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option(
+    "--before-table",
+    "before_table",
+    default=None,
+    help="Table name to read from BEFORE file (SQLite only).",
+)
+@click.option(
+    "--after-table",
+    "after_table",
+    default=None,
+    help="Table name to read from AFTER file (SQLite only).",
+)
+@click.option(
+    "--sample",
+    "sample",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Profile only the first N rows of each file.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit a stable JSON diff document instead of the terminal view.",
+)
+@click.option(
+    "--fail-on",
+    "fail_on",
+    type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+    default=None,
+    help=(
+        "Exit non-zero (code 5) when the overall diff severity meets or "
+        "exceeds the given level. Useful for CI data-contract gates."
+    ),
+)
+def compare(
+    before: Path,
+    after: Path,
+    before_table: str | None,
+    after_table: str | None,
+    sample: int | None,
+    as_json: bool,
+    fail_on: str | None,
+) -> None:
+    """Compare two data files and surface schema/PII/distribution drift."""
+    console = Console()
+    before_report = _load_and_profile(console, before, table=before_table, sample=sample)
+    after_report = _load_and_profile(console, after, table=after_table, sample=sample)
+    diff = compare_reports(before_report, after_report)
+
+    if as_json:
+        click.echo(dumps_diff_json(diff))
+    else:
+        render_diff_terminal(diff, console=console)
+
+    if fail_on is not None:
+        threshold = SEVERITY_BANDS[fail_on.lower()]
+        if SEVERITY_BANDS[diff.severity] >= threshold:
+            if not as_json:
+                console.print(
+                    f"[bold red]The veil refuses you.[/bold red] "
+                    f"diff severity {diff.severity!r} \u2265 {fail_on!r} threshold."
+                )
+            raise SystemExit(5)
 
 
 @main.command()

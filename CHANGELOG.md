@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `seance compare a b` command: profiles two files and emits a structured
+  schema diff (column adds/removes, dtype drift, null/distinct/distribution
+  shifts, PII appearance/disappearance) with per-column and overall
+  severity bands. Supports `--sample`, `--before-table`/`--after-table`
+  (SQLite), stable `--json` output (`schema_version: 1`), and `--fail-on
+  {low,medium,high}` for CI data-contract gates (exit code **5**). Closes #8.
 - Homebrew formula template at `packaging/homebrew/schema-seance.rb`
   (plus a `packaging/homebrew/README.md`) for serving `schema-seance` from
   a third-party tap. Includes a `test do` block that runs `seance
