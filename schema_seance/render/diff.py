@@ -11,6 +11,7 @@ from rich.table import Table
 from rich.text import Text
 
 from schema_seance.diff import ColumnDiff, FieldChange, PIIChange, SchemaDiff
+from schema_seance.personas import DEFAULT_PERSONA_ID, PERSONAS, Persona
 
 __all__ = ["render_terminal", "diff_to_dict", "dumps"]
 
@@ -60,9 +61,15 @@ def _pii_line(c: PIIChange) -> str:
     return f"PII {c.kind} shifted ({c.before:.2f} → {c.after:.2f})"
 
 
-def render_terminal(diff: SchemaDiff, console: Console | None = None) -> None:
+def render_terminal(
+    diff: SchemaDiff,
+    console: Console | None = None,
+    *,
+    persona: Persona | None = None,
+) -> None:
     """Render *diff* as a layered Rich view: header, table, per-column details."""
     console = console or Console()
+    persona = persona or PERSONAS[DEFAULT_PERSONA_ID]
 
     header = Table.grid(padding=(0, 2))
     header.add_column(style="bold magenta")
@@ -78,7 +85,7 @@ def render_terminal(diff: SchemaDiff, console: Console | None = None) -> None:
         f"{diff.before_cols:,} → {diff.after_cols:,}",
     )
 
-    title = Text("🔮 Two Spirits Compared", style="bold magenta")
+    title = Text(f"{persona.emoji} Two Spirits Compared", style="bold magenta")
     console.print(Panel(header, title=title, border_style="magenta", padding=(1, 2)))
 
     summary = Table(title="Schema Drift", show_lines=False, expand=False)
@@ -114,7 +121,7 @@ def render_terminal(diff: SchemaDiff, console: Console | None = None) -> None:
         console.print(
             Panel(
                 "The veil shows no drift. Both schemas hum in the same key.",
-                title="🔮 Madame Schema",
+                title=persona.panel_title,
                 border_style="green",
                 padding=(1, 2),
             )

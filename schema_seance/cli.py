@@ -16,7 +16,8 @@ from .llm import LLMUnavailableError
 from .llm import load_config as load_llm_config
 from .llm import read as llm_read
 from .parlor import ParlorUnavailableError, build_app, load_session
-from .persona import GREETING_TAGLINE, GREETING_TITLE, greeting_panel_body
+from .personas import Persona, UnknownPersonaError, available_ids
+from .personas import resolve as resolve_persona
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
 from .readers import SQLiteTableError, UnsupportedFormatError, load
@@ -26,12 +27,12 @@ from .render.json import dumps as dumps_json
 from .render.terminal import render as render_terminal
 
 
-def _print_greeting(console: Console) -> None:
-    title = Text(f"🔮 {GREETING_TITLE}", style="bold magenta")
-    title.append(f"  ·  {GREETING_TAGLINE}", style="italic dim")
+def _print_greeting(console: Console, persona: Persona) -> None:
+    title = Text(persona.panel_title, style="bold magenta")
+    title.append(f"  ·  {persona.tagline}", style="italic dim")
     console.print(
         Panel(
-            greeting_panel_body(),
+            persona.greeting_body(),
             title=title,
             border_style="magenta",
             padding=(1, 2),
@@ -39,13 +40,37 @@ def _print_greeting(console: Console) -> None:
     )
 
 
+def _persona_from_ctx(ctx: click.Context) -> Persona:
+    """Get the resolved persona from the click context (always populated)."""
+    persona = (ctx.obj or {}).get("persona")
+    if persona is None:
+        persona = resolve_persona()
+        ctx.ensure_object(dict)["persona"] = persona
+    return persona
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(__version__, prog_name="seance")
+@click.option(
+    "--persona",
+    "persona_name",
+    type=click.Choice(available_ids(), case_sensitive=False),
+    default=None,
+    help=(
+        "Narrator voice. Defaults to SEANCE_PERSONA env var, then 'madame'. "
+        f"Available: {', '.join(available_ids())}."
+    ),
+)
 @click.pass_context
-def main(ctx: click.Context) -> None:
+def main(ctx: click.Context, persona_name: str | None) -> None:
     """schema-seance — channel the spirits of your data."""
+    try:
+        persona = resolve_persona(persona_name)
+    except UnknownPersonaError as exc:  # pragma: no cover - Click guards via Choice
+        raise click.BadParameter(str(exc), param_hint="--persona") from exc
+    ctx.ensure_object(dict)["persona"] = persona
     if ctx.invoked_subcommand is None:
-        _print_greeting(Console())
+        _print_greeting(Console(), persona)
 
 
 @main.command()
@@ -82,7 +107,9 @@ def main(ctx: click.Context) -> None:
         "Exit non-zero (code 3) when any PII finding meets or exceeds the given confidence band."
     ),
 )
+@click.pass_context
 def summon(
+    ctx: click.Context,
     path: Path,
     table: str | None,
     sample: int | None,
@@ -91,6 +118,7 @@ def summon(
 ) -> None:
     """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite)."""
     console = Console()
+    persona = _persona_from_ctx(ctx)
     try:
         relation = load(path, table=table)
     except UnsupportedFormatError as exc:
@@ -101,7 +129,7 @@ def summon(
                 "[bold].jsonl[/bold], [bold].ndjson[/bold], "
                 "[bold].parquet[/bold], [bold].sqlite[/bold] / "
                 "[bold].db[/bold].",
-                title="🔮 Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -110,7 +138,7 @@ def summon(
         console.print(
             Panel(
                 f"The spirits cannot find that table. {exc}",
-                title="🔮 Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -137,7 +165,7 @@ def summon(
         if worst >= threshold:
             if not as_json:
                 console.print(
-                    f"[bold red]The veil refuses you.[/bold red] "
+                    f"[bold red]{persona.refusal_phrase}[/bold red] "
                     f"{worst_kind} in column '{worst_col}' "
                     f"(confidence {worst:.2f} ≥ {fail_on_pii} threshold "
                     f"{threshold:.2f})."
@@ -178,7 +206,9 @@ def summon(
     show_default=True,
     help="Print the standard profile before the reading.",
 )
+@click.pass_context
 def read(
+    ctx: click.Context,
     path: Path,
     table: str | None,
     sample: int | None,
@@ -187,13 +217,14 @@ def read(
 ) -> None:
     """Profile a file, then ask an LLM for a 3-paragraph reading."""
     console = Console()
+    persona = _persona_from_ctx(ctx)
     try:
         relation = load(path, table=table)
     except UnsupportedFormatError as exc:
         console.print(
             Panel(
                 f"The spirits recoil. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -202,7 +233,7 @@ def read(
         console.print(
             Panel(
                 f"The spirits cannot find that table. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -218,19 +249,19 @@ def read(
         console.print(
             Panel(
                 f"The veil stays drawn. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="yellow",
             )
         )
         raise SystemExit(4) from exc
 
     try:
-        result = llm_read(report, config)
+        result = llm_read(report, config, persona=persona)
     except LLMUnavailableError as exc:
         console.print(
             Panel(
                 f"The spirits would not speak through {config.model}. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="yellow",
             )
         )
@@ -239,7 +270,7 @@ def read(
     console.print(
         Panel(
             result.text,
-            title=Text("\U0001f52e A Reading", style="bold magenta"),
+            title=Text(persona.reading_panel_title, style="bold magenta"),
             border_style="magenta",
             padding=(1, 2),
         )
@@ -259,6 +290,7 @@ def read(
 
 def _load_and_profile(
     console: Console,
+    persona: Persona,
     path: Path,
     *,
     table: str | None,
@@ -270,7 +302,7 @@ def _load_and_profile(
         console.print(
             Panel(
                 f"The spirits recoil. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -279,7 +311,7 @@ def _load_and_profile(
         console.print(
             Panel(
                 f"The spirits cannot find that table. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -332,7 +364,9 @@ def _load_and_profile(
         "exceeds the given level. Useful for CI data-contract gates."
     ),
 )
+@click.pass_context
 def compare(
+    ctx: click.Context,
     before: Path,
     after: Path,
     before_table: str | None,
@@ -343,21 +377,22 @@ def compare(
 ) -> None:
     """Compare two data files and surface schema/PII/distribution drift."""
     console = Console()
-    before_report = _load_and_profile(console, before, table=before_table, sample=sample)
-    after_report = _load_and_profile(console, after, table=after_table, sample=sample)
+    persona = _persona_from_ctx(ctx)
+    before_report = _load_and_profile(console, persona, before, table=before_table, sample=sample)
+    after_report = _load_and_profile(console, persona, after, table=after_table, sample=sample)
     diff = compare_reports(before_report, after_report)
 
     if as_json:
         click.echo(dumps_diff_json(diff))
     else:
-        render_diff_terminal(diff, console=console)
+        render_diff_terminal(diff, console=console, persona=persona)
 
     if fail_on is not None:
         threshold = SEVERITY_BANDS[fail_on.lower()]
         if SEVERITY_BANDS[diff.severity] >= threshold:
             if not as_json:
                 console.print(
-                    f"[bold red]The veil refuses you.[/bold red] "
+                    f"[bold red]{persona.refusal_phrase}[/bold red] "
                     f"diff severity {diff.severity!r} \u2265 {fail_on!r} threshold."
                 )
             raise SystemExit(5)
@@ -374,7 +409,8 @@ def compare(
     default=None,
     help="Table name to read (SQLite only). Defaults to the first table.",
 )
-def parlor(path: Path, table: str | None) -> None:
+@click.pass_context
+def parlor(ctx: click.Context, path: Path, table: str | None) -> None:
     """Open the interactive TUI parlor for a data file.
 
     Browse columns, page through sample rows, and run ad-hoc SQL
@@ -382,13 +418,14 @@ def parlor(path: Path, table: str | None) -> None:
     Requires the optional ``[tui]`` extra (``pip install schema-seance[tui]``).
     """
     console = Console()
+    persona = _persona_from_ctx(ctx)
     try:
         session = load_session(path, table=table)
     except UnsupportedFormatError as exc:
         console.print(
             Panel(
                 f"The spirits recoil. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -397,7 +434,7 @@ def parlor(path: Path, table: str | None) -> None:
         console.print(
             Panel(
                 f"The spirits cannot find that table. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="red",
             )
         )
@@ -409,13 +446,25 @@ def parlor(path: Path, table: str | None) -> None:
         console.print(
             Panel(
                 f"The parlor is shuttered. {exc}",
-                title="\U0001f52e Madame Schema",
+                title=persona.panel_title,
                 border_style="yellow",
             )
         )
         raise SystemExit(4) from exc
 
     app.run()
+
+
+@main.command(name="personas")
+def list_personas() -> None:
+    """List available narrator personas."""
+    from .personas import PERSONAS, available_ids
+
+    console = Console()
+    for pid in available_ids():
+        p = PERSONAS[pid]
+        console.print(f"[bold magenta]{p.emoji} {pid}[/bold magenta] — {p.display_name}")
+        console.print(f"    [dim]{p.tagline}[/dim]")
 
 
 if __name__ == "__main__":  # pragma: no cover

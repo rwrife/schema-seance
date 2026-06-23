@@ -22,6 +22,7 @@ from typing import Any
 from urllib import error as _urlerror
 from urllib import request as _urlrequest
 
+from .personas import DEFAULT_PERSONA_ID, PERSONAS, Persona
 from .profile import ProfileReport
 from .render.json import report_to_dict
 
@@ -39,17 +40,16 @@ __all__ = [
 DEFAULT_TIMEOUT_SECONDS = 30.0
 _MAX_PROFILE_BYTES = 24_000  # keep prompts tractable on small local models
 
-_SYSTEM_PROMPT = (
-    "You are Madame Schema, a deadpan Victorian medium who reads the spirits "
-    "of tabular data. You are given a JSON profile of a single dataset: file "
-    "metadata, per-column statistics, PII findings, and anomalies. "
-    "Produce EXACTLY three short paragraphs, separated by blank lines:\n"
-    "  1. What this dataset appears to be — domain, grain, likely purpose.\n"
-    "  2. What is suspicious — PII risks, anomalies, mixed types, outliers.\n"
-    "  3. What to do next — concrete next steps before trusting this file.\n"
-    "Stay in character (dry, theatrical, never silly). No bullet lists. "
-    "No code fences. Cite specific column names where useful."
-)
+
+def _system_prompt(persona: Persona | None) -> str:
+    """Return the persona's LLM system prompt, defaulting to Madame Schema."""
+    if persona is None:
+        persona = PERSONAS[DEFAULT_PERSONA_ID]
+    return persona.llm_system_prompt
+
+
+# Backwards-compatible default for callers that imported the constant.
+_SYSTEM_PROMPT = PERSONAS[DEFAULT_PERSONA_ID].llm_system_prompt
 
 # Rough USD/1k-token rates for a couple of common OpenAI models. Anything not
 # in this table is treated as free (local) and we just print token counts.
@@ -154,11 +154,12 @@ def _trim_profile_for_prompt(report: ProfileReport) -> str:
     return json.dumps(data, default=str)[:_MAX_PROFILE_BYTES]
 
 
-def build_messages(report: ProfileReport) -> list[dict[str, str]]:
+def build_messages(report: ProfileReport, persona: Persona | None = None) -> list[dict[str, str]]:
     """Build the chat messages for a reading.
 
     Exposed so tests (and other callers) can inspect the prompt without
-    making a network call.
+    making a network call. ``persona`` defaults to Madame Schema for
+    backwards compatibility.
     """
     profile_json = _trim_profile_for_prompt(report)
     user = (
@@ -167,7 +168,7 @@ def build_messages(report: ProfileReport) -> list[dict[str, str]]:
         f"```json\n{profile_json}\n```"
     )
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _system_prompt(persona)},
         {"role": "user", "content": user},
     ]
 
@@ -241,9 +242,14 @@ def _extract_text(response: dict[str, Any]) -> str:
     return content.strip()
 
 
-def read(report: ProfileReport, config: LLMConfig) -> LLMResult:
+def read(
+    report: ProfileReport,
+    config: LLMConfig,
+    *,
+    persona: Persona | None = None,
+) -> LLMResult:
     """Call the LLM and return a structured result. Raises on any failure."""
-    messages = build_messages(report)
+    messages = build_messages(report, persona=persona)
     started = time.monotonic()
     response = _post_chat(config, messages)
     elapsed = time.monotonic() - started
