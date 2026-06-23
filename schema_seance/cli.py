@@ -455,6 +455,19 @@ def parlor(ctx: click.Context, path: Path, table: str | None) -> None:
     app.run()
 
 
+@main.command(name="mcp")
+def mcp_serve() -> None:
+    """Run an MCP stdio server exposing ``summon`` and ``read`` as tools.
+
+    Wire this into an MCP client (Claude Desktop, Cursor, Continue, etc.) as
+    a stdio server: ``command: seance``, ``args: ["mcp"]``. The server
+    speaks JSON-RPC 2.0 over stdin/stdout.
+    """
+    from .mcp import serve as _mcp_serve
+
+    _mcp_serve()
+
+
 @main.command(name="personas")
 def list_personas() -> None:
     """List available narrator personas."""
