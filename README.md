@@ -212,6 +212,33 @@ pipx install "schema-seance[tui]"
 pip install "schema-seance[tui]"
 ```
 
+## MCP server mode
+
+`seance mcp` runs a tiny [Model Context Protocol](https://modelcontextprotocol.io)
+server over stdio, exposing two tools:
+
+- **`summon`** — profile a file and return schema, per-column stats, PII
+  findings, and anomalies as JSON. Offline.
+- **`read`** — profile, then ask the configured LLM for a narrative
+  reading. Requires the usual `SEANCE_LLM_*` env vars.
+
+Wire it into any MCP client as a stdio server. Example for Claude Desktop
+(`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "schema-seance": {
+      "command": "seance",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The server speaks JSON-RPC 2.0 with no extra dependencies; clients that
+speak line-delimited JSON or LSP-style `Content-Length` framing both work.
+
 ## Development
 
 ```bash

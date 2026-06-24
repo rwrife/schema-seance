@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `seance mcp` subcommand: stdio MCP (Model Context Protocol) server
+  exposing `summon` and `read` as tools so agents (Claude Desktop, Cursor,
+  Continue, etc.) can profile data on demand. Speaks JSON-RPC 2.0 with no
+  extra dependencies; accepts line-delimited or LSP-style `Content-Length`
+  framing on input. Closes #10.
 - Persona packs: swappable narrator voices via `--persona <id>` or
   `SEANCE_PERSONA` env. Ships with `madame` (default), `skeptic`,
   `pirate`, `noir`, `corporate`, and `shakespeare`. New `seance personas`
