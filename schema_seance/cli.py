@@ -23,6 +23,7 @@ from .profile import profile as profile_relation
 from .readers import SQLiteTableError, UnsupportedFormatError, load
 from .render.diff import dumps as dumps_diff_json
 from .render.diff import render_terminal as render_diff_terminal
+from .render.html import dumps as dumps_html
 from .render.json import dumps as dumps_json
 from .render.terminal import render as render_terminal
 
@@ -107,6 +108,20 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
         "Exit non-zero (code 3) when any PII finding meets or exceeds the given confidence band."
     ),
 )
+@click.option(
+    "--html",
+    "html_path",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    default=None,
+    help="Also write a self-contained HTML report to the given path.",
+)
+@click.option(
+    "--quiet",
+    "quiet",
+    is_flag=True,
+    default=False,
+    help="Suppress stdout output (still writes --html / --json files).",
+)
 @click.pass_context
 def summon(
     ctx: click.Context,
@@ -115,6 +130,8 @@ def summon(
     sample: int | None,
     as_json: bool,
     fail_on_pii: str | None,
+    html_path: Path | None,
+    quiet: bool,
 ) -> None:
     """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite)."""
     console = Console()
@@ -146,7 +163,15 @@ def summon(
 
     report = profile_relation(relation, path=path, sample=sample)
 
-    if as_json:
+    if html_path is not None:
+        html_path.write_text(
+            dumps_html(report, persona=persona, title=f"Seance — {path.name}"),
+            encoding="utf-8",
+        )
+
+    if quiet:
+        pass
+    elif as_json:
         click.echo(dumps_json(report))
     else:
         render_terminal(report, console=console)
@@ -163,7 +188,7 @@ def summon(
                     worst_kind = finding.kind
                     worst_col = col.name
         if worst >= threshold:
-            if not as_json:
+            if not as_json and not quiet:
                 console.print(
                     f"[bold red]{persona.refusal_phrase}[/bold red] "
                     f"{worst_kind} in column '{worst_col}' "
@@ -206,6 +231,20 @@ def summon(
     show_default=True,
     help="Print the standard profile before the reading.",
 )
+@click.option(
+    "--html",
+    "html_path",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    default=None,
+    help="Also write a self-contained HTML report (including the reading) to the given path.",
+)
+@click.option(
+    "--quiet",
+    "quiet",
+    is_flag=True,
+    default=False,
+    help="Suppress stdout output (still writes --html files).",
+)
 @click.pass_context
 def read(
     ctx: click.Context,
@@ -214,6 +253,8 @@ def read(
     sample: int | None,
     timeout: float,
     show_profile: bool,
+    html_path: Path | None,
+    quiet: bool,
 ) -> None:
     """Profile a file, then ask an LLM for a 3-paragraph reading."""
     console = Console()
@@ -240,7 +281,7 @@ def read(
         raise SystemExit(2) from exc
 
     report = profile_relation(relation, path=path, sample=sample)
-    if show_profile:
+    if show_profile and not quiet:
         render_terminal(report, console=console)
 
     try:
@@ -266,6 +307,20 @@ def read(
             )
         )
         raise SystemExit(4) from exc
+
+    if html_path is not None:
+        html_path.write_text(
+            dumps_html(
+                report,
+                persona=persona,
+                reading=result,
+                title=f"Seance Reading \u2014 {path.name}",
+            ),
+            encoding="utf-8",
+        )
+
+    if quiet:
+        return
 
     console.print(
         Panel(

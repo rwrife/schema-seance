@@ -84,6 +84,7 @@ uv run seance summon path/to/data.sqlite --table events
 uv run seance summon big.csv --sample 100000
 uv run seance summon big.csv --json | jq '.columns[] | select(.null_pct > 50)'
 uv run seance summon people.csv --fail-on-pii high   # CI smoke check
+uv run seance summon data.csv --html report.html     # self-contained HTML report
 ```
 
 ### Flags
@@ -96,6 +97,10 @@ uv run seance summon people.csv --fail-on-pii high   # CI smoke check
 - `--fail-on-pii {low|medium|high}` — exit with code **3** when any column
   has a PII finding at or above the chosen confidence band. See the
   exit-code contract below.
+- `--html PATH` — also write a self-contained HTML report (CSS inlined,
+  no external assets) covering all four sections. Works alongside `--json`.
+- `--quiet` — suppress stdout output (useful with `--html` to write the
+  report silently in CI).
 
 ### Exit codes
 
