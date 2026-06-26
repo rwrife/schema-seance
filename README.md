@@ -112,6 +112,34 @@ uv run seance summon data.csv --html report.html     # self-contained HTML repor
 | `4`  | `seance read` could not reach (or got nothing usable from) the LLM.    |
 | `5`  | `seance compare --fail-on` was set and the diff met that severity.     |
 
+## Banishing PII — `seance redact`
+
+`summon` whispers which columns reek of PII. `redact` *banishes* it.
+Point it at a file, pick a destination, and Madame Schema emits a
+redacted copy with each flagged column transformed by a per-detector
+strategy.
+
+```bash
+# Default: mask emails/phones/cards/SSN/IPs, hash names, year-only DOBs.
+uv run seance redact people.csv -o people.redacted.csv
+
+# Preview the plan without writing anything.
+uv run seance redact people.csv --dry-run --json
+
+# Lower the bar to medium confidence and override individual strategies.
+uv run seance redact data.jsonl -o clean.jsonl \
+    --min-confidence medium \
+    --strategy email=hash --strategy name=null
+
+# Force an output format (otherwise inferred from --output's extension).
+uv run seance redact data.csv -o clean.parquet --format parquet
+```
+
+Strategies: `mask` (smart per-kind redaction, keeps last 4 of cards /
+phones, /24 of IPv4, /48 of IPv6), `hash` (truncated SHA-256), `null`
+(drop the cell), `keep` (skip the column), `year` (DOB → 4-digit year).
+`--dry-run` prints the plan; pair with `--json` for scripting.
+
 ## Compare two files
 
 `seance compare a.csv b.csv` profiles both files, then flags column
