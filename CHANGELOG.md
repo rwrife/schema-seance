@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `--html PATH` flag on `seance summon` and `seance read`: writes a
+  self-contained HTML report (inlined CSS, no external assets, no JS)
+  covering The Veil Parts, The Spirits Speak, Whispers of the Personal
+  (with color-coded confidence bands), and Restless Anomalies. `read`
+  also includes the LLM reading as a top section. Persona-aware banner.
+  Works alongside `--json`; pair with `--quiet` to write silently in CI.
+  Closes #27.
 - `seance mcp` subcommand: stdio MCP (Model Context Protocol) server
   exposing `summon` and `read` as tools so agents (Claude Desktop, Cursor,
   Continue, etc.) can profile data on demand. Speaks JSON-RPC 2.0 with no
