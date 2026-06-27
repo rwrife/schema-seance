@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `seance redact <file> -o <out>`: emit a redacted copy of the input. Reuses
+  the PII detectors, picks per-detector default strategies (mask for emails /
+  phones / cards / SSN / IPs, hash for names, year-only for DOB), and supports
+  `--min-confidence`, `--strategy <detector>=<mask|hash|null|keep|year>`
+  (repeatable), `--format {csv,jsonl,parquet}`, and `--dry-run` (with `--json`
+  for scripting). Re-running `summon` on the output yields ~0 high-confidence
+  PII for non-IP detectors. Closes #28.
 - `--html PATH` flag on `seance summon` and `seance read`: writes a
   self-contained HTML report (inlined CSS, no external assets, no JS)
   covering The Veil Parts, The Spirits Speak, Whispers of the Personal

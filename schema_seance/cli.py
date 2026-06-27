@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -21,6 +22,19 @@ from .personas import resolve as resolve_persona
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
 from .readers import SQLiteTableError, UnsupportedFormatError, load
+from .redact import (
+    DEFAULT_STRATEGY,
+    RedactionError,
+    parse_strategy_overrides,
+)
+from .redact import (
+    build_plan as build_redaction_plan,
+)
+from .redact_run import (
+    SUPPORTED_OUTPUT_FORMATS,
+    infer_format,
+    run_redaction,
+)
 from .render.diff import dumps as dumps_diff_json
 from .render.diff import render_terminal as render_diff_terminal
 from .render.html import dumps as dumps_html
@@ -521,6 +535,179 @@ def mcp_serve() -> None:
     from .mcp import serve as _mcp_serve
 
     _mcp_serve()
+
+
+@main.command()
+@click.argument(
+    "path",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option(
+    "-o",
+    "--output",
+    "output",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    required=False,
+    default=None,
+    help="Destination path. Required unless --dry-run is set.",
+)
+@click.option(
+    "--table",
+    "table",
+    default=None,
+    help="Table name to read (SQLite only). Defaults to the first table.",
+)
+@click.option(
+    "--min-confidence",
+    "min_confidence",
+    type=click.Choice(["low", "medium", "high"], case_sensitive=False),
+    default="high",
+    show_default=True,
+    help="Redact columns whose PII confidence is at or above this band.",
+)
+@click.option(
+    "--strategy",
+    "strategy_specs",
+    multiple=True,
+    metavar="DETECTOR=STRATEGY",
+    help=(
+        "Override the default strategy for a detector. Repeatable. "
+        "Strategies: mask, hash, null, keep, year. "
+        "Example: --strategy email=hash --strategy name=null."
+    ),
+)
+@click.option(
+    "--format",
+    "out_format",
+    type=click.Choice(sorted(SUPPORTED_OUTPUT_FORMATS), case_sensitive=False),
+    default=None,
+    help="Output format. Defaults to inferring from the output extension.",
+)
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    default=False,
+    help="Print the planned redactions without writing output.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit a stable JSON document instead of pretty output (for scripting).",
+)
+@click.pass_context
+def redact(
+    ctx: click.Context,
+    path: Path,
+    output: Path | None,
+    table: str | None,
+    min_confidence: str,
+    strategy_specs: tuple[str, ...],
+    out_format: str | None,
+    dry_run: bool,
+    as_json: bool,
+) -> None:
+    """Banish PII: emit a redacted copy of <path>."""
+    console = Console()
+    persona = _persona_from_ctx(ctx)
+
+    if output is None and not dry_run:
+        raise click.UsageError("--output is required unless --dry-run is set.")
+
+    try:
+        overrides = parse_strategy_overrides(strategy_specs)
+    except RedactionError as exc:
+        raise click.BadParameter(str(exc), param_hint="--strategy") from exc
+
+    report = _load_and_profile(console, persona, path, table=table, sample=None)
+    try:
+        plan = build_redaction_plan(
+            report,
+            min_confidence=min_confidence,
+            strategy_overrides=overrides,
+        )
+    except RedactionError as exc:
+        raise click.BadParameter(str(exc)) from exc
+
+    plan_payload = {
+        "path": str(path),
+        "min_confidence": plan.min_confidence,
+        "output": str(output) if output else None,
+        "format": (out_format or (infer_format(output) if output else None)),
+        "dry_run": dry_run,
+        "actions": [
+            {
+                "column": a.column,
+                "kind": a.kind,
+                "strategy": a.strategy,
+                "confidence": a.confidence,
+                "default": a.strategy == DEFAULT_STRATEGY.get(a.kind),
+            }
+            for a in plan.actions
+        ],
+    }
+
+    if dry_run:
+        if as_json:
+            click.echo(json.dumps(plan_payload, indent=2, sort_keys=True))
+            return
+        if not plan.actions:
+            console.print(
+                Panel(
+                    "No columns met the confidence threshold. The spirits are already at rest.",
+                    title=persona.panel_title,
+                    border_style="magenta",
+                )
+            )
+            return
+        console.print(
+            Panel(
+                f"Planned redactions · min-confidence={plan.min_confidence}",
+                title=persona.panel_title,
+                border_style="magenta",
+            )
+        )
+        for a in plan.actions:
+            console.print(
+                f"  [bold]{a.column}[/bold] "
+                f"→ [magenta]{a.strategy}[/magenta] "
+                f"([dim]{a.kind}, conf {a.confidence:.2f}[/dim])"
+            )
+        return
+
+    try:
+        counts = run_redaction(
+            path,
+            output,
+            plan,
+            table=table,
+            out_format=out_format,
+        )
+    except RedactionError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    if as_json:
+        plan_payload["counts"] = counts
+        plan_payload["total_cells_redacted"] = sum(counts.values())
+        click.echo(json.dumps(plan_payload, indent=2, sort_keys=True))
+        return
+
+    total = sum(counts.values())
+    console.print(
+        Panel(
+            f"Wrote redacted copy to [bold]{output}[/bold]\n"
+            f"Cells redacted: [bold]{total}[/bold] across "
+            f"{len(plan.actions)} column(s).\n"
+            f"[italic dim]The spirits are at rest.[/italic dim]",
+            title=persona.panel_title,
+            border_style="magenta",
+        )
+    )
+    if counts:
+        for col, n in sorted(counts.items()):
+            console.print(f"  [bold]{col}[/bold]: {n} cell(s)")
 
 
 @main.command(name="personas")
