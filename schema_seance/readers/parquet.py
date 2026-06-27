@@ -13,5 +13,6 @@ def read(
     connection: duckdb.DuckDBPyConnection,
 ) -> duckdb.DuckDBPyRelation:
     """Return a DuckDB relation over the Parquet file at *path*."""
-    p = str(Path(path)).replace("'", "''")
+    raw = path if isinstance(path, str) else str(Path(path))
+    p = raw.replace("'", "''")
     return connection.sql(f"SELECT * FROM read_parquet('{p}')")

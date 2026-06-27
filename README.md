@@ -101,6 +101,31 @@ uv run seance summon data.csv --html report.html     # self-contained HTML repor
   no external assets) covering all four sections. Works alongside `--json`.
 - `--quiet` — suppress stdout output (useful with `--html` to write the
   report silently in CI).
+- `--format {csv|tsv|jsonl|ndjson|parquet}` — override format inference.
+  Handy for opaque remote URLs without an extension.
+- `--region REGION` — AWS region for `s3://` inputs (overrides
+  `AWS_REGION` / `AWS_DEFAULT_REGION`).
+
+### Remote inputs (S3 + HTTPS)
+
+`summon` and `read` also accept `s3://bucket/key` and `https://…` URLs —
+no download dance required. DuckDB's `httpfs` extension is auto-installed
+on first use, and AWS credentials come from the standard chain
+(`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars,
+`~/.aws/credentials`, or IMDS on EC2).
+
+```bash
+uv run seance summon https://example.com/data.csv
+uv run seance summon s3://my-bucket/events/2026/01/events.parquet --region us-west-2
+uv run seance read https://example.com/data.jsonl
+```
+
+If the URL has no extension (e.g. a signed pre-auth link), pass
+`--format` to tell Madame Schema what's behind the veil:
+
+```bash
+uv run seance summon "https://example.com/download?id=42" --format parquet
+```
 
 ### Exit codes
 

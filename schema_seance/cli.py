@@ -21,7 +21,7 @@ from .personas import Persona, UnknownPersonaError, available_ids
 from .personas import resolve as resolve_persona
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
-from .readers import SQLiteTableError, UnsupportedFormatError, load
+from .readers import RemoteAccessError, SQLiteTableError, UnsupportedFormatError, load
 from .redact import (
     DEFAULT_STRATEGY,
     RedactionError,
@@ -35,11 +35,34 @@ from .redact_run import (
     infer_format,
     run_redaction,
 )
+from .remote import is_remote
 from .render.diff import dumps as dumps_diff_json
 from .render.diff import render_terminal as render_diff_terminal
 from .render.html import dumps as dumps_html
 from .render.json import dumps as dumps_json
 from .render.terminal import render as render_terminal
+
+
+class _DataInput(click.ParamType):
+    """Click type that accepts a local file path OR a remote URL.
+
+    Local paths must exist and be readable; remote URLs (``s3://``,
+    ``http(s)://``) are passed through as strings.
+    """
+
+    name = "path_or_url"
+
+    def convert(self, value, param, ctx):  # type: ignore[override]
+        if value is None:
+            return value
+        text = str(value)
+        if is_remote(text):
+            return text
+        local = click.Path(exists=True, dir_okay=False, readable=True, path_type=Path)
+        return local.convert(value, param, ctx)
+
+
+DATA_INPUT = _DataInput()
 
 
 def _print_greeting(console: Console, persona: Persona) -> None:
@@ -91,7 +114,7 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
 @main.command()
 @click.argument(
     "path",
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=DATA_INPUT,
 )
 @click.option(
     "--table",
@@ -136,22 +159,46 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
     default=False,
     help="Suppress stdout output (still writes --html / --json files).",
 )
+@click.option(
+    "--format",
+    "format_override",
+    type=click.Choice(["csv", "tsv", "jsonl", "ndjson", "parquet"], case_sensitive=False),
+    default=None,
+    help="Override format inference (useful for opaque remote URLs).",
+)
+@click.option(
+    "--region",
+    "region",
+    default=None,
+    help="AWS region for s3:// inputs (overrides AWS_REGION env var).",
+)
 @click.pass_context
 def summon(
     ctx: click.Context,
-    path: Path,
+    path: Path | str,
     table: str | None,
     sample: int | None,
     as_json: bool,
     fail_on_pii: str | None,
     html_path: Path | None,
     quiet: bool,
+    format_override: str | None,
+    region: str | None,
 ) -> None:
     """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite)."""
     console = Console()
     persona = _persona_from_ctx(ctx)
     try:
-        relation = load(path, table=table)
+        relation = load(path, table=table, format=format_override, region=region)
+    except RemoteAccessError as exc:
+        console.print(
+            Panel(
+                f"The spirits recoil. {exc}",
+                title=persona.panel_title,
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
     except UnsupportedFormatError as exc:
         console.print(
             Panel(
@@ -215,7 +262,7 @@ def summon(
 @main.command()
 @click.argument(
     "path",
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=DATA_INPUT,
 )
 @click.option(
     "--table",
@@ -259,22 +306,46 @@ def summon(
     default=False,
     help="Suppress stdout output (still writes --html files).",
 )
+@click.option(
+    "--format",
+    "format_override",
+    type=click.Choice(["csv", "tsv", "jsonl", "ndjson", "parquet"], case_sensitive=False),
+    default=None,
+    help="Override format inference (useful for opaque remote URLs).",
+)
+@click.option(
+    "--region",
+    "region",
+    default=None,
+    help="AWS region for s3:// inputs (overrides AWS_REGION env var).",
+)
 @click.pass_context
 def read(
     ctx: click.Context,
-    path: Path,
+    path: Path | str,
     table: str | None,
     sample: int | None,
     timeout: float,
     show_profile: bool,
     html_path: Path | None,
     quiet: bool,
+    format_override: str | None,
+    region: str | None,
 ) -> None:
     """Profile a file, then ask an LLM for a 3-paragraph reading."""
     console = Console()
     persona = _persona_from_ctx(ctx)
     try:
-        relation = load(path, table=table)
+        relation = load(path, table=table, format=format_override, region=region)
+    except RemoteAccessError as exc:
+        console.print(
+            Panel(
+                f"The spirits recoil. {exc}",
+                title=persona.panel_title,
+                border_style="red",
+            )
+        )
+        raise SystemExit(2) from exc
     except UnsupportedFormatError as exc:
         console.print(
             Panel(
@@ -391,11 +462,11 @@ def _load_and_profile(
 @main.command()
 @click.argument(
     "before",
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=DATA_INPUT,
 )
 @click.argument(
     "after",
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=DATA_INPUT,
 )
 @click.option(
     "--before-table",
@@ -470,7 +541,7 @@ def compare(
 @main.command()
 @click.argument(
     "path",
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=DATA_INPUT,
 )
 @click.option(
     "--table",
@@ -540,7 +611,7 @@ def mcp_serve() -> None:
 @main.command()
 @click.argument(
     "path",
-    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+    type=DATA_INPUT,
 )
 @click.option(
     "-o",

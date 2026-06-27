@@ -13,6 +13,7 @@ def read(
     connection: duckdb.DuckDBPyConnection,
 ) -> duckdb.DuckDBPyRelation:
     """Return a DuckDB relation over the CSV/TSV at *path*."""
-    p = str(Path(path)).replace("'", "''")
+    raw = path if isinstance(path, str) else str(Path(path))
+    p = raw.replace("'", "''")
     # DuckDB sniffs delimiter, header, types automatically.
     return connection.sql(f"SELECT * FROM read_csv_auto('{p}', sample_size=-1)")

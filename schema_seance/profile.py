@@ -20,6 +20,7 @@ from .anomalies import Anomaly
 from .anomalies import detect_column as detect_anomalies
 from .pii import PIIFinding
 from .pii import detect_column as detect_pii
+from .remote import is_remote, remote_suffix
 
 __all__ = [
     "ColumnProfile",
@@ -82,7 +83,7 @@ class ColumnProfile:
 
 @dataclass(frozen=True)
 class ProfileReport:
-    path: Path | None
+    path: Path | str | None
     rows: int
     cols: int
     size_bytes: int | None
@@ -264,7 +265,12 @@ def profile(
     top_k:
         Number of top frequent values to capture per column.
     """
-    p = Path(path) if path is not None else None
+    if path is None:
+        p: Path | str | None = None
+    elif isinstance(path, str) and is_remote(path):
+        p = path
+    else:
+        p = Path(path)
 
     rel = relation
     sampled = False
@@ -283,7 +289,15 @@ def profile(
         for name, dtype in zip(columns, dtypes, strict=True)
     ]
 
-    size_bytes, encoding = _file_meta(p)
+    if isinstance(p, Path):
+        size_bytes, encoding = _file_meta(p)
+    elif isinstance(p, str):
+        # Remote URL — skip stat, infer encoding from URL suffix.
+        size_bytes = None
+        text_exts = {".csv", ".tsv", ".jsonl", ".ndjson"}
+        encoding = "utf-8" if remote_suffix(p) in text_exts else None
+    else:
+        size_bytes, encoding = None, None
     return ProfileReport(
         path=p,
         rows=rows,
