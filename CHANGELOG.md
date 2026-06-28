@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Remote inputs for `seance summon` / `seance read`: accept `s3://bucket/key`
+  and `https://…` URLs in addition to local paths. DuckDB's `httpfs`
+  extension is auto-loaded on first remote use; AWS credentials come from
+  the standard chain (env vars, `~/.aws/credentials`, IMDS). New `--format`
+  flag overrides extension inference for opaque URLs; `--region` overrides
+  the S3 region. Network errors surface as a friendly Madame-Schema-flavored
+  message with exit code 2. Closes #29.
 - `seance redact <file> -o <out>`: emit a redacted copy of the input. Reuses
   the PII detectors, picks per-detector default strategies (mask for emails /
   phones / cards / SSN / IPs, hash for names, year-only for DOB), and supports
