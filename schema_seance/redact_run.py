@@ -139,6 +139,7 @@ def run_redaction(
     *,
     table: str | None = None,
     out_format: str | None = None,
+    sheet: str | int | None = None,
 ) -> dict[str, int]:
     """Stream rows from *src_path*, apply *plan*, write to *out_path*.
 
@@ -151,7 +152,7 @@ def run_redaction(
             f"Unsupported output format {fmt!r}. Choose one of: {sorted(SUPPORTED_OUTPUT_FORMATS)}."
         )
 
-    relation = load(src_path, table=table)
+    relation = load(src_path, table=table, sheet=sheet)
     columns = list(relation.columns)
     dtypes = [str(t) for t in relation.types]
     fetched = relation.fetchall()

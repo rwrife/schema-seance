@@ -68,7 +68,12 @@ class ParlorSession:
         return self.run_sql(f"SELECT * FROM {self.view_name}", limit=limit)
 
 
-def load_session(path: str | Path, *, table: str | None = None) -> ParlorSession:
+def load_session(
+    path: str | Path,
+    *,
+    table: str | None = None,
+    sheet: str | int | None = None,
+) -> ParlorSession:
     """Load *path* into a parlor session.
 
     Uses the same reader dispatch as the rest of the tool so every
@@ -78,7 +83,7 @@ def load_session(path: str | Path, *, table: str | None = None) -> ParlorSession
 
     p = Path(path)
     connection = duckdb.connect()
-    relation = load_relation(p, connection=connection, table=table)
+    relation = load_relation(p, connection=connection, table=table, sheet=sheet)
     relation.create_view("data", replace=True)
     cols = tuple(zip(relation.columns, relation.dtypes, strict=False))
     cols = tuple((str(n), str(d)) for n, d in cols)

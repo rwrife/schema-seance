@@ -21,12 +21,20 @@ from ..remote import (
     wrap_duckdb_error,
 )
 from . import csv as csv_reader
+from . import excel as excel_reader
 from . import jsonl as jsonl_reader
 from . import parquet as parquet_reader
 from . import sqlite as sqlite_reader
+from .excel import ExcelReaderError
 from .sqlite import SQLiteTableError
 
-__all__ = ["load", "UnsupportedFormatError", "SQLiteTableError", "RemoteAccessError"]
+__all__ = [
+    "load",
+    "UnsupportedFormatError",
+    "SQLiteTableError",
+    "ExcelReaderError",
+    "RemoteAccessError",
+]
 
 
 class UnsupportedFormatError(ValueError):
@@ -43,6 +51,8 @@ _DISPATCH: dict[str, Any] = {
     ".sqlite": sqlite_reader.read,
     ".sqlite3": sqlite_reader.read,
     ".db": sqlite_reader.read,
+    ".xlsx": excel_reader.read,
+    ".xlsm": excel_reader.read,
 }
 
 _REMOTE_DISPATCH: dict[str, str] = {
@@ -55,6 +65,7 @@ _REMOTE_DISPATCH: dict[str, str] = {
 }
 
 _SQLITE_SUFFIXES = {".sqlite", ".sqlite3", ".db"}
+_EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
 
 _FORMAT_TO_SUFFIX = {
     "csv": ".csv",
@@ -72,6 +83,7 @@ def load(
     table: str | None = None,
     format: str | None = None,
     region: str | None = None,
+    sheet: str | int | None = None,
 ) -> duckdb.DuckDBPyRelation:
     """Load *path* into a DuckDB relation.
 
@@ -105,6 +117,8 @@ def load(
     con = connection or duckdb.connect()
     if suffix in _SQLITE_SUFFIXES:
         return reader(p, connection=con, table=table)
+    if suffix in _EXCEL_SUFFIXES:
+        return reader(p, connection=con, sheet=sheet)
     return reader(p, connection=con)
 
 
