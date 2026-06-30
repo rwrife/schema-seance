@@ -204,6 +204,13 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
     default=None,
     help="AWS region for s3:// inputs (overrides AWS_REGION env var).",
 )
+@click.option(
+    "--no-timeseries",
+    "no_timeseries",
+    is_flag=True,
+    default=False,
+    help="Skip the temporal analysis (The Hours That Pass) section.",
+)
 @click.pass_context
 def summon(
     ctx: click.Context,
@@ -217,6 +224,7 @@ def summon(
     quiet: bool,
     format_override: str | None,
     region: str | None,
+    no_timeseries: bool,
 ) -> None:
     """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite/Excel)."""
     console = Console()
@@ -264,7 +272,7 @@ def summon(
         _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
 
-    report = profile_relation(relation, path=path, sample=sample)
+    report = profile_relation(relation, path=path, sample=sample, timeseries=not no_timeseries)
 
     if html_path is not None:
         html_path.write_text(

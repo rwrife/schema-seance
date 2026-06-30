@@ -76,6 +76,10 @@ DuckDB and prints four sections:
 - **Restless Anomalies** — mixed value shapes in VARCHAR columns,
   primary-key candidates with duplicates, high-null columns, and IQR-based
   numeric outliers.
+- **The Hours That Pass** — for date / timestamp columns (real dtypes or
+  ISO / RFC3339 / common-format strings): time range, inferred cadence,
+  % of rows that conform, expected vs. actual buckets with the top gaps,
+  and day-of-week / hour-of-day skew hints. Skip with `--no-timeseries`.
 
 ```bash
 uv run seance summon tests/fixtures/tiny.csv
@@ -101,6 +105,7 @@ uv run seance summon data.csv --html report.html     # self-contained HTML repor
 - `--fail-on-pii {low|medium|high}` — exit with code **3** when any column
   has a PII finding at or above the chosen confidence band. See the
   exit-code contract below.
+- `--no-timeseries` — skip the **Hours That Pass** temporal section.
 - `--html PATH` — also write a self-contained HTML report (CSS inlined,
   no external assets) covering all four sections. Works alongside `--json`.
 - `--quiet` — suppress stdout output (useful with `--html` to write the

@@ -21,6 +21,8 @@ from .anomalies import detect_column as detect_anomalies
 from .pii import PIIFinding
 from .pii import detect_column as detect_pii
 from .remote import is_remote, remote_suffix
+from .timeseries import TimeSeriesProfile
+from .timeseries import detect_column as detect_timeseries
 
 __all__ = [
     "ColumnProfile",
@@ -30,7 +32,7 @@ __all__ = [
 ]
 
 # Bumped when the JSON output schema changes in a breaking way.
-PROFILE_SCHEMA_VERSION = 2
+PROFILE_SCHEMA_VERSION = 3
 
 # How many values to pull for PII/anomaly heuristics per column.
 _DETECT_SAMPLE = 500
@@ -91,6 +93,7 @@ class ProfileReport:
     sampled: bool = False
     sample_size: int | None = None
     columns: list[ColumnProfile] = field(default_factory=list)
+    time_series: list[TimeSeriesProfile] = field(default_factory=list)
 
 
 def _quote_ident(name: str) -> str:
@@ -250,6 +253,7 @@ def profile(
     path: str | Path | None = None,
     sample: int | None = None,
     top_k: int = 5,
+    timeseries: bool = True,
 ) -> ProfileReport:
     """Compute a full profile of *relation*.
 
@@ -284,10 +288,15 @@ def profile(
     dtypes = [str(t) for t in rel.dtypes]
     rows = int(rel.count("*").fetchone()[0] or 0)
 
-    column_profiles = [
-        _profile_column(rel, name, dtype, rows, top_k=top_k)
-        for name, dtype in zip(columns, dtypes, strict=True)
-    ]
+    column_profiles: list[ColumnProfile] = []
+    ts_profiles: list[TimeSeriesProfile] = []
+    for name, dtype in zip(columns, dtypes, strict=True):
+        col = _profile_column(rel, name, dtype, rows, top_k=top_k)
+        column_profiles.append(col)
+        if timeseries:
+            ts = _column_timeseries(rel, name, dtype)
+            if ts is not None:
+                ts_profiles.append(ts)
 
     if isinstance(p, Path):
         size_bytes, encoding = _file_meta(p)
@@ -307,4 +316,27 @@ def profile(
         sampled=sampled,
         sample_size=sample_size,
         columns=column_profiles,
+        time_series=ts_profiles,
     )
+
+
+# Larger sample budget for the temporal analysis — gaps/seasonality need it.
+_TIMESERIES_SAMPLE = 5000
+
+
+def _column_timeseries(
+    relation: duckdb.DuckDBPyRelation, name: str, dtype: str
+) -> TimeSeriesProfile | None:
+    qname = _quote_ident(name)
+    try:
+        rows = relation.query(
+            "rel",
+            (
+                f"SELECT {qname} AS v FROM rel WHERE {qname} IS NOT NULL "
+                f"LIMIT {int(_TIMESERIES_SAMPLE)}"
+            ),
+        ).fetchall()
+    except duckdb.Error:
+        return None
+    values = [r[0] for r in rows]
+    return detect_timeseries(name=name, dtype=dtype, values=values)
