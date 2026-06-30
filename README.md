@@ -3,8 +3,8 @@
 > _Summon the spirits of your data._
 
 A spooky little CLI that channels schemas, PII, and anomalies out of CSV,
-JSONL, Parquet, and SQLite files. Madame Schema is your medium; DuckDB is
-her crystal ball.
+JSONL, Parquet, SQLite, and Excel (.xlsx/.xlsm) files. Madame Schema is
+your medium; DuckDB is her crystal ball.
 
 **Status:** early WIP — M1 scaffold, M2 readers, M3 full profiling, and M4
 PII + anomalies landed. See [PLAN.md](./PLAN.md) for the full design and
@@ -81,6 +81,8 @@ DuckDB and prints four sections:
 uv run seance summon tests/fixtures/tiny.csv
 uv run seance summon path/to/data.parquet
 uv run seance summon path/to/data.sqlite --table events
+uv run seance summon workbook.xlsx --sheet sales      # pip install 'schema-seance[excel]'
+uv run seance list-sheets workbook.xlsx               # inventory + row counts
 uv run seance summon big.csv --sample 100000
 uv run seance summon big.csv --json | jq '.columns[] | select(.null_pct > 50)'
 uv run seance summon people.csv --fail-on-pii high   # CI smoke check
@@ -90,6 +92,8 @@ uv run seance summon data.csv --html report.html     # self-contained HTML repor
 ### Flags
 
 - `--table NAME` — pick a SQLite table (defaults to the first one).
+- `--sheet NAME|INDEX` — pick an Excel sheet by name or 0-based index
+  (defaults to the active sheet). Requires the optional `[excel]` extra.
 - `--sample N` — profile only the first `N` rows. Reported `rows` and
   `sampled`/`sample_size` reflect this.
 - `--json` — emit a stable, versioned JSON document instead of the Rich

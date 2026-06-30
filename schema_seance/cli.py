@@ -21,7 +21,14 @@ from .personas import Persona, UnknownPersonaError, available_ids
 from .personas import resolve as resolve_persona
 from .pii import CONFIDENCE_BANDS
 from .profile import profile as profile_relation
-from .readers import RemoteAccessError, SQLiteTableError, UnsupportedFormatError, load
+from .readers import (
+    ExcelReaderError,
+    RemoteAccessError,
+    SQLiteTableError,
+    UnsupportedFormatError,
+    load,
+)
+from .readers.excel import list_sheets as list_excel_sheets
 from .redact import (
     DEFAULT_STRATEGY,
     RedactionError,
@@ -87,6 +94,25 @@ def _persona_from_ctx(ctx: click.Context) -> Persona:
     return persona
 
 
+def _coerce_sheet(value: str | None) -> str | int | None:
+    """Click gives us a string; pass through ints when numeric."""
+    if value is None:
+        return None
+    if value.lstrip("-").isdigit():
+        return int(value)
+    return value
+
+
+def _excel_error_panel(console: Console, persona: Persona, exc: Exception) -> None:
+    console.print(
+        Panel(
+            f"The spirits stumble at the workbook. {exc}",
+            title=persona.panel_title,
+            border_style="red",
+        )
+    )
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(__version__, prog_name="seance")
 @click.option(
@@ -121,6 +147,12 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
     "table",
     default=None,
     help="Table name to read (SQLite only). Defaults to the first table.",
+)
+@click.option(
+    "--sheet",
+    "sheet",
+    default=None,
+    help="Sheet name or 0-based index (Excel only). Defaults to the active sheet.",
 )
 @click.option(
     "--sample",
@@ -177,6 +209,7 @@ def summon(
     ctx: click.Context,
     path: Path | str,
     table: str | None,
+    sheet: str | None,
     sample: int | None,
     as_json: bool,
     fail_on_pii: str | None,
@@ -185,11 +218,17 @@ def summon(
     format_override: str | None,
     region: str | None,
 ) -> None:
-    """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite)."""
+    """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite/Excel)."""
     console = Console()
     persona = _persona_from_ctx(ctx)
     try:
-        relation = load(path, table=table, format=format_override, region=region)
+        relation = load(
+            path,
+            table=table,
+            format=format_override,
+            region=region,
+            sheet=_coerce_sheet(sheet),
+        )
     except RemoteAccessError as exc:
         console.print(
             Panel(
@@ -206,7 +245,7 @@ def summon(
                 "Supported: [bold].csv[/bold], [bold].tsv[/bold], "
                 "[bold].jsonl[/bold], [bold].ndjson[/bold], "
                 "[bold].parquet[/bold], [bold].sqlite[/bold] / "
-                "[bold].db[/bold].",
+                "[bold].db[/bold], [bold].xlsx[/bold] / [bold].xlsm[/bold].",
                 title=persona.panel_title,
                 border_style="red",
             )
@@ -220,6 +259,9 @@ def summon(
                 border_style="red",
             )
         )
+        raise SystemExit(2) from exc
+    except ExcelReaderError as exc:
+        _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
 
     report = profile_relation(relation, path=path, sample=sample)
@@ -269,6 +311,12 @@ def summon(
     "table",
     default=None,
     help="Table name to read (SQLite only). Defaults to the first table.",
+)
+@click.option(
+    "--sheet",
+    "sheet",
+    default=None,
+    help="Sheet name or 0-based index (Excel only). Defaults to the active sheet.",
 )
 @click.option(
     "--sample",
@@ -324,6 +372,7 @@ def read(
     ctx: click.Context,
     path: Path | str,
     table: str | None,
+    sheet: str | None,
     sample: int | None,
     timeout: float,
     show_profile: bool,
@@ -336,7 +385,13 @@ def read(
     console = Console()
     persona = _persona_from_ctx(ctx)
     try:
-        relation = load(path, table=table, format=format_override, region=region)
+        relation = load(
+            path,
+            table=table,
+            format=format_override,
+            region=region,
+            sheet=_coerce_sheet(sheet),
+        )
     except RemoteAccessError as exc:
         console.print(
             Panel(
@@ -363,6 +418,9 @@ def read(
                 border_style="red",
             )
         )
+        raise SystemExit(2) from exc
+    except ExcelReaderError as exc:
+        _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
 
     report = profile_relation(relation, path=path, sample=sample)
@@ -435,9 +493,10 @@ def _load_and_profile(
     *,
     table: str | None,
     sample: int | None,
+    sheet: str | int | None = None,
 ):
     try:
-        relation = load(path, table=table)
+        relation = load(path, table=table, sheet=sheet)
     except UnsupportedFormatError as exc:
         console.print(
             Panel(
@@ -455,6 +514,9 @@ def _load_and_profile(
                 border_style="red",
             )
         )
+        raise SystemExit(2) from exc
+    except ExcelReaderError as exc:
+        _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
     return profile_relation(relation, path=path, sample=sample)
 
@@ -549,8 +611,14 @@ def compare(
     default=None,
     help="Table name to read (SQLite only). Defaults to the first table.",
 )
+@click.option(
+    "--sheet",
+    "sheet",
+    default=None,
+    help="Sheet name or 0-based index (Excel only). Defaults to the active sheet.",
+)
 @click.pass_context
-def parlor(ctx: click.Context, path: Path, table: str | None) -> None:
+def parlor(ctx: click.Context, path: Path, table: str | None, sheet: str | None) -> None:
     """Open the interactive TUI parlor for a data file.
 
     Browse columns, page through sample rows, and run ad-hoc SQL
@@ -560,7 +628,7 @@ def parlor(ctx: click.Context, path: Path, table: str | None) -> None:
     console = Console()
     persona = _persona_from_ctx(ctx)
     try:
-        session = load_session(path, table=table)
+        session = load_session(path, table=table, sheet=_coerce_sheet(sheet))
     except UnsupportedFormatError as exc:
         console.print(
             Panel(
@@ -578,6 +646,9 @@ def parlor(ctx: click.Context, path: Path, table: str | None) -> None:
                 border_style="red",
             )
         )
+        raise SystemExit(2) from exc
+    except ExcelReaderError as exc:
+        _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
 
     try:
@@ -629,6 +700,12 @@ def mcp_serve() -> None:
     help="Table name to read (SQLite only). Defaults to the first table.",
 )
 @click.option(
+    "--sheet",
+    "sheet",
+    default=None,
+    help="Sheet name or 0-based index (Excel only). Defaults to the active sheet.",
+)
+@click.option(
     "--min-confidence",
     "min_confidence",
     type=click.Choice(["low", "medium", "high"], case_sensitive=False),
@@ -674,6 +751,7 @@ def redact(
     path: Path,
     output: Path | None,
     table: str | None,
+    sheet: str | None,
     min_confidence: str,
     strategy_specs: tuple[str, ...],
     out_format: str | None,
@@ -692,7 +770,9 @@ def redact(
     except RedactionError as exc:
         raise click.BadParameter(str(exc), param_hint="--strategy") from exc
 
-    report = _load_and_profile(console, persona, path, table=table, sample=None)
+    report = _load_and_profile(
+        console, persona, path, table=table, sample=None, sheet=_coerce_sheet(sheet)
+    )
     try:
         plan = build_redaction_plan(
             report,
@@ -755,6 +835,7 @@ def redact(
             plan,
             table=table,
             out_format=out_format,
+            sheet=_coerce_sheet(sheet),
         )
     except RedactionError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -779,6 +860,60 @@ def redact(
     if counts:
         for col, n in sorted(counts.items()):
             console.print(f"  [bold]{col}[/bold]: {n} cell(s)")
+
+
+@main.command(name="list-sheets")
+@click.argument(
+    "path",
+    type=click.Path(exists=True, dir_okay=False, readable=True, path_type=Path),
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit a JSON document instead of the pretty table.",
+)
+@click.pass_context
+def list_sheets(ctx: click.Context, path: Path, as_json: bool) -> None:
+    """List sheets in an Excel workbook and exit."""
+    console = Console()
+    persona = _persona_from_ctx(ctx)
+    suffix = path.suffix.lower()
+    if suffix not in {".xlsx", ".xlsm"}:
+        console.print(
+            Panel(
+                f"`list-sheets` only knows .xlsx / .xlsm workbooks (got {suffix!r}).",
+                title=persona.panel_title,
+                border_style="red",
+            )
+        )
+        raise SystemExit(2)
+    try:
+        sheets = list_excel_sheets(path)
+    except ExcelReaderError as exc:
+        _excel_error_panel(console, persona, exc)
+        raise SystemExit(2) from exc
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {"path": str(path), "sheets": [{"name": n, "rows": r} for n, r in sheets]},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
+    from rich.table import Table
+
+    tbl = Table(title=f"Sheets in {path.name}", title_style="bold magenta")
+    tbl.add_column("#", style="dim", justify="right")
+    tbl.add_column("Name", style="bold")
+    tbl.add_column("Rows", justify="right")
+    for i, (name, rows) in enumerate(sheets):
+        tbl.add_row(str(i), name, str(rows))
+    console.print(tbl)
 
 
 @main.command(name="personas")

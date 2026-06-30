@@ -7,6 +7,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Excel reader: `seance summon` / `read` / `redact` / `parlor` now accept
+  `.xlsx` / `.xlsm` workbooks via an optional `[excel]` extra
+  (`pip install 'schema-seance[excel]'`). New `--sheet NAME|INDEX` flag
+  selects a sheet (defaults to the workbook's active sheet) and a new
+  `seance list-sheets <file>` command prints the sheet inventory with
+  approximate row counts (also `--json`). Closes #33.
 - Remote inputs for `seance summon` / `seance read`: accept `s3://bucket/key`
   and `https://…` URLs in addition to local paths. DuckDB's `httpfs`
   extension is auto-loaded on first remote use; AWS credentials come from

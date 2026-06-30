@@ -26,6 +26,9 @@ dependencies = [
 tui = [
     "textual>=0.60",
 ]
+excel = [
+    "openpyxl>=3.1.5",
+]
 
 [project.scripts]
 seance = "schema_seance.cli:main"
@@ -54,6 +57,7 @@ addopts = "-ra"
 
 [dependency-groups]
 dev = [
+    "openpyxl>=3.1.5",
     "pytest>=8.0",
     "ruff>=0.5",
     "textual>=0.60",
