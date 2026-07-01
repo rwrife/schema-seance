@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The Hours That Pass** — temporal profile for date/timestamp columns.
+  `seance summon` now detects DATE/TIMESTAMP dtypes and date-shaped string
+  columns (ISO-8601, RFC3339, common locale formats), and reports range,
+  inferred cadence + conformance %, expected vs. actual buckets, the top
+  gaps, and day-of-week / hour-of-day seasonality skew. Added under a
+  stable `time_series` key in `--json` output (schema version bumped to
+  `3`). Skip the section with `--no-timeseries`. Closes #34.
 - Excel reader: `seance summon` / `read` / `redact` / `parlor` now accept
   `.xlsx` / `.xlsm` workbooks via an optional `[excel]` extra
   (`pip install 'schema-seance[excel]'`). New `--sheet NAME|INDEX` flag

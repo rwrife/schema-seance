@@ -110,6 +110,7 @@ def render(report: ProfileReport, console: Console | None = None) -> None:
 
     _render_pii(report, console)
     _render_anomalies(report, console)
+    _render_timeseries(report, console)
 
 
 _BAND_STYLE = {
@@ -178,6 +179,47 @@ def _render_anomalies(report: ProfileReport, console: Console) -> None:
         Panel(
             table,
             title=Text("⚡ Restless Anomalies", style="bold magenta"),
+            border_style="magenta",
+            padding=(1, 2),
+        )
+    )
+
+
+def _render_timeseries(report: ProfileReport, console: Console) -> None:
+    if not getattr(report, "time_series", None):
+        return
+    table = Table(header_style="bold magenta", expand=True, show_lines=False)
+    table.add_column("Column", style="bold", no_wrap=True)
+    table.add_column("Range", overflow="fold")
+    table.add_column("Cadence", no_wrap=True)
+    table.add_column("Conform %", justify="right")
+    table.add_column("Missing", justify="right")
+    table.add_column("Top gap", overflow="fold")
+    table.add_column("Seasonality", overflow="fold")
+    for ts in report.time_series:
+        gap_text = "—"
+        if ts.gaps:
+            g = ts.gaps[0]
+            gap_text = f"{g.start} → {g.end}"
+        if ts.seasonality:
+            season_text = ", ".join(
+                f"{s.bucket.replace('_', '-')}:{s.label}×{s.ratio:.1f}" for s in ts.seasonality[:4]
+            )
+        else:
+            season_text = "—"
+        table.add_row(
+            ts.column,
+            f"{ts.range_min} → {ts.range_max}",
+            ts.cadence_label or "—",
+            f"{ts.conformance_pct:.1f}" if ts.cadence_seconds else "—",
+            f"{ts.missing_buckets}" if ts.missing_buckets is not None else "—",
+            gap_text,
+            season_text,
+        )
+    console.print(
+        Panel(
+            table,
+            title=Text("⏳ The Hours That Pass", style="bold magenta"),
             border_style="magenta",
             padding=(1, 2),
         )

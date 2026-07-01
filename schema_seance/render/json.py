@@ -86,6 +86,39 @@ def report_to_dict(report: ProfileReport) -> dict[str, Any]:
         "sampled": report.sampled,
         "sample_size": report.sample_size,
         "columns": [_column_to_dict(c) for c in report.columns],
+        "time_series": [_timeseries_to_dict(t) for t in report.time_series],
+    }
+
+
+def _timeseries_to_dict(ts: Any) -> dict[str, Any]:
+    return {
+        "column": ts.column,
+        "detected_from": ts.detected_from,
+        "points": ts.points,
+        "range": {"min": ts.range_min, "max": ts.range_max},
+        "cadence_seconds": ts.cadence_seconds,
+        "cadence_label": ts.cadence_label,
+        "conformance_pct": ts.conformance_pct,
+        "expected_buckets": ts.expected_buckets,
+        "missing_buckets": ts.missing_buckets,
+        "gaps": [
+            {
+                "start": g.start,
+                "end": g.end,
+                "duration_seconds": g.duration_seconds,
+            }
+            for g in ts.gaps
+        ],
+        "seasonality": [
+            {
+                "bucket": s.bucket,
+                "label": s.label,
+                "share": s.share,
+                "expected_share": s.expected_share,
+                "ratio": s.ratio,
+            }
+            for s in ts.seasonality
+        ],
     }
 
 

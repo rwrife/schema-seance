@@ -234,6 +234,7 @@ def test_json_snapshot_csv() -> None:
                 "anomalies": [],
             },
         ],
+        "time_series": [],
     }
     assert payload == expected
 
