@@ -16,6 +16,13 @@ from .diff import compare as compare_reports
 from .llm import LLMUnavailableError
 from .llm import load_config as load_llm_config
 from .llm import read as llm_read
+from .multi import (
+    DEFAULT_MAX_FILES,
+    MultiInputError,
+    expand_inputs,
+    is_multi_input,
+    profile_many,
+)
 from .parlor import ParlorUnavailableError, build_app, load_session
 from .personas import Persona, UnknownPersonaError, available_ids
 from .personas import resolve as resolve_persona
@@ -47,6 +54,7 @@ from .render.diff import dumps as dumps_diff_json
 from .render.diff import render_terminal as render_diff_terminal
 from .render.html import dumps as dumps_html
 from .render.json import dumps as dumps_json
+from .render.multi import dumps_multi, render_multi
 from .render.terminal import render as render_terminal
 
 
@@ -69,7 +77,30 @@ class _DataInput(click.ParamType):
         return local.convert(value, param, ctx)
 
 
+class _MultiDataInput(click.ParamType):
+    """Click type that accepts a file, directory, glob, or remote URL.
+
+    Directories and glob patterns are passed through as strings so the
+    multi-file orchestrator can enumerate them; single existing files are
+    returned as ``Path`` for parity with the single-file summon path.
+    """
+
+    name = "path_or_glob_or_url"
+
+    def convert(self, value, param, ctx):  # type: ignore[override]
+        if value is None:
+            return value
+        text = str(value)
+        if is_remote(text):
+            return text
+        if is_multi_input(text):
+            return text
+        local = click.Path(exists=True, dir_okay=False, readable=True, path_type=Path)
+        return local.convert(value, param, ctx)
+
+
 DATA_INPUT = _DataInput()
+SUMMON_INPUT = _MultiDataInput()
 
 
 def _print_greeting(console: Console, persona: Persona) -> None:
@@ -140,7 +171,7 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
 @main.command()
 @click.argument(
     "path",
-    type=DATA_INPUT,
+    type=SUMMON_INPUT,
 )
 @click.option(
     "--table",
@@ -160,6 +191,28 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
     type=click.IntRange(min=1),
     default=None,
     help="Profile only the first N rows. Useful on huge files.",
+)
+@click.option(
+    "--include",
+    "include",
+    multiple=True,
+    default=(),
+    help=("Only include files whose basename matches this glob (multi-file mode). Repeatable."),
+)
+@click.option(
+    "--exclude",
+    "exclude",
+    multiple=True,
+    default=(),
+    help=("Skip files whose basename matches this glob (multi-file mode). Repeatable."),
+)
+@click.option(
+    "--max-files",
+    "max_files",
+    type=click.IntRange(min=1),
+    default=DEFAULT_MAX_FILES,
+    show_default=True,
+    help="Safety cap on the number of files summoned in multi-file mode.",
 )
 @click.option(
     "--json",
@@ -218,6 +271,9 @@ def summon(
     table: str | None,
     sheet: str | None,
     sample: int | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    max_files: int,
     as_json: bool,
     fail_on_pii: str | None,
     html_path: Path | None,
@@ -226,9 +282,49 @@ def summon(
     region: str | None,
     no_timeseries: bool,
 ) -> None:
-    """Summon the schema of a data file (CSV/JSONL/Parquet/SQLite/Excel)."""
+    """Summon the schema of a data file, directory, or glob."""
     console = Console()
     persona = _persona_from_ctx(ctx)
+
+    # Multi-file mode: directory / glob / remote glob.
+    if isinstance(path, str) and is_multi_input(path):
+        try:
+            inputs = expand_inputs(
+                path,
+                include=tuple(include),
+                exclude=tuple(exclude),
+                max_files=max_files,
+                region=region,
+            )
+        except MultiInputError as exc:
+            console.print(
+                Panel(
+                    f"The medium finds no gathering. {exc}",
+                    title=persona.panel_title,
+                    border_style="red",
+                )
+            )
+            raise SystemExit(2) from exc
+        multi = profile_many(
+            inputs,
+            sample=sample,
+            table=table,
+            sheet=_coerce_sheet(sheet),
+            region=region,
+            format=format_override,
+            timeseries=not no_timeseries,
+        )
+        if quiet:
+            pass
+        elif as_json:
+            click.echo(dumps_multi(multi))
+        else:
+            render_multi(multi, console=console)
+        # Non-zero exit if every input failed to load.
+        if multi.loaded_count == 0 and multi.failed_count > 0:
+            raise SystemExit(2)
+        return
+
     try:
         relation = load(
             path,
