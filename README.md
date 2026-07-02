@@ -136,6 +136,43 @@ If the URL has no extension (e.g. a signed pre-auth link), pass
 uv run seance summon "https://example.com/download?id=42" --format parquet
 ```
 
+### Multi-file summon (The Congregation)
+
+Point `summon` at a directory, a glob, or a remote glob and you get one
+cross-file report instead of many:
+
+```bash
+uv run seance summon ./data/
+uv run seance summon 'data/*.parquet'
+uv run seance summon 's3://bucket/events/2026/*/*.parquet' --region us-west-2
+```
+
+The report includes a per-file roll call, **The Congregation** roll-up
+(total rows, schema-cluster count, drifted columns), and **Schema
+Circles** — files sharing the same column-name + dtype signature. Files
+that fail to load show up under **The Silent Ones** and never abort the
+run.
+
+Filter the set with `--include` / `--exclude` (basename globs,
+repeatable) and raise or lower the safety cap with `--max-files`
+(default `50`). `--json` returns a stable payload:
+
+```json
+{
+  "kind": "multi",
+  "inputs": ["./data/"],
+  "summary": {
+    "files_loaded": 3,
+    "files_failed": 0,
+    "total_rows": 12345,
+    "schema_clusters": 2,
+    "drifted_columns": ["extra"]
+  },
+  "files": [ { "path": "…", "ok": true, "profile": { … } } ],
+  "clusters": [ { "size": 2, "columns": [ … ], "files": [ … ] } ]
+}
+```
+
 ### Exit codes
 
 | Code | Meaning                                                                |

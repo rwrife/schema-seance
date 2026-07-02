@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **The Congregation** — multi-file summon. `seance summon` now accepts a
+  directory (recursive), a local glob (`data/*.parquet`), or a remote
+  glob (`s3://bucket/prefix/*.csv`) and produces a cross-file report:
+  per-file mini-profile, schema clusters (files sharing the same
+  column-name+dtype signature), drifted columns, and total row counts.
+  Failures on individual files are collected (never abort the run).
+  New flags: `--include`, `--exclude`, `--max-files` (default 50).
+  `--json` emits a stable `{kind: "multi", inputs, summary, files, clusters}`
+  document. Closes #35.
 - **The Hours That Pass** — temporal profile for date/timestamp columns.
   `seance summon` now detects DATE/TIMESTAMP dtypes and date-shaped string
   columns (ISO-8601, RFC3339, common locale formats), and reports range,
