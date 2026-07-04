@@ -105,6 +105,18 @@ uv run seance summon data.csv --html report.html     # self-contained HTML repor
 - `--fail-on-pii {low|medium|high}` — exit with code **3** when any column
   has a PII finding at or above the chosen confidence band. See the
   exit-code contract below.
+- `--score` — compute and display a 0-100 **Data Quality Score** +
+  letter grade (A-F) with a short breakdown of what dragged it down.
+  Also embedded under `"score"` in `--json` output. See
+  [Data Quality Score](#data-quality-score) below.
+- `--score-only` — print just the numeric quality score to stdout and
+  exit. Implies `--score`. Handy in shell pipelines (`grade=$(seance
+  summon x.csv --score-only)`).
+- `--min-score N` — exit with code **6** if the computed quality score
+  is below `N`. Implies `--score`. Documented alongside `--fail-on-pii`.
+- `--badge PATH` — write a shields.io-style SVG quality badge to
+  `PATH`. Implies `--score`. Drop the SVG in your README to advertise a
+  file's health.
 - `--no-timeseries` — skip the **Hours That Pass** temporal section.
 - `--html PATH` — also write a self-contained HTML report (CSS inlined,
   no external assets) covering all four sections. Works alongside `--json`.
@@ -182,6 +194,68 @@ repeatable) and raise or lower the safety cap with `--max-files`
 | `3`  | `--fail-on-pii` was set and a finding met or exceeded that confidence. |
 | `4`  | `seance read` could not reach (or got nothing usable from) the LLM.    |
 | `5`  | `seance compare --fail-on` was set and the diff met that severity.     |
+| `6`  | `--min-score` was set and the quality score fell below the threshold.  |
+
+## Data Quality Score
+
+After Madame Schema finishes her reading, roll everything up into a single
+**Quality Score** (0-100) and letter **Grade** (A-F). Great for CI
+dashboards, README badges, and giving humans a one-glance verdict without
+parsing the full report.
+
+```bash
+uv run seance summon data.csv --score
+# …normal profile output…
+# 🔮 Madame Schema's Quality Score
+#   72 / 100  (Grade: C)
+#     -18  high null density (3 columns > 20% null)
+#     - 6  mixed types in 'user_id'
+#     - 4  PII detected without masking: contact (email:high)
+
+uv run seance summon data.csv --score-only          # prints '72' and exits
+uv run seance summon data.csv --min-score 80        # exit code 6 if below
+uv run seance summon data.csv --badge quality.svg   # shields.io-style SVG
+```
+
+The scoring model is intentionally simple and pure — start at 100 and
+deduct capped penalties for signals we already collect:
+
+- **null_density** — columns above 20% null (per-column and total caps).
+- **mixed_types** — VARCHAR columns whose values split between
+  numeric/date/string buckets.
+- **pk_duplicates** — duplicate values in PK-candidate columns
+  (`id`, `*_id`, `uuid`, …).
+- **numeric_outliers** — IQR-fenced outlier prevalence per numeric column.
+- **pii_exposure** — undeclared PII, weighted by confidence band. Redact
+  with `seance redact` to eliminate this penalty.
+- **encoding** — text-ish local files whose encoding the reader couldn't
+  confirm.
+
+Grade thresholds: **A** ≥ 90, **B** ≥ 80, **C** ≥ 70, **D** ≥ 60, **F** < 60.
+
+The `--json` payload embeds a stable `"score"` block when scoring is
+requested:
+
+```json
+{
+  "schema_version": 4,
+  "score": {
+    "score": 72,
+    "grade": "C",
+    "color": "#dfb317",
+    "penalties": [
+      {"kind": "null_density", "points": 18, "detail": "…"}
+    ]
+  }
+}
+```
+
+`--badge PATH` writes a self-contained shields.io-style SVG (no external
+fonts, no CSS import) coloured by grade. Drop it in a README:
+
+```markdown
+![Data Quality](./quality.svg)
+```
 
 ## Banishing PII — `seance redact`
 

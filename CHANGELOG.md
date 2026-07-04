@@ -7,6 +7,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Data Quality Score + Grade + Badge** — `seance summon --score`
+  rolls the full profile into a 0-100 quality score and A-F letter
+  grade with a compact breakdown (null density, mixed types, PK
+  duplicates, numeric outliers, undeclared PII, encoding hints).
+  New flags: `--score`, `--score-only` (prints just the bare integer
+  for shell pipelines), `--min-score N` (exit code **6** below the
+  threshold), `--badge PATH` (writes a self-contained shields.io-style
+  SVG coloured by grade). The score is embedded under a stable
+  `"score"` key in `--json` output (schema version bumped to `4`).
+  New module `schema_seance/score.py` exposes the pure
+  `compute_score(report)` / `render_badge_svg(result)` API. Closes #40.
 - **Great Expectations / Soda export** — `seance summon --expectations
   {gx,soda}` now turns the profile into a starter
   `ExpectationSuite` JSON (GX v3) or a `checks.yml` fragment (Soda
