@@ -211,6 +211,58 @@ phones, /24 of IPv4, /48 of IPv6), `hash` (truncated SHA-256), `null`
 (drop the cell), `keep` (skip the column), `year` (DOB → 4-digit year).
 `--dry-run` prints the plan; pair with `--json` for scripting.
 
+## Exporting to Great Expectations / Soda
+
+Every `seance summon` already knows your columns' types, ranges,
+null-density, value sets, and PII flags — enough to hand-write a
+reasonable starter expectation suite. `--expectations` does the
+hand-writing for you.
+
+```bash
+# Great Expectations v3 ExpectationSuite JSON on stdout.
+uv run seance summon data.csv --expectations gx > suite.json
+
+# Soda Core checks.yml on stdout.
+uv run seance summon data.csv --expectations soda > checks.yml
+
+# Override the derived suite/dataset name.
+uv run seance summon events.parquet --expectations gx \
+    --suite-name warehouse.events > events.suite.json
+
+# Opt PII columns back into the suite (default: skipped at medium+).
+uv run seance summon people.csv --expectations soda --include-pii
+
+# Only emit checks for columns with at least N observed non-null values
+# — useful with --sample on huge files.
+uv run seance summon huge.parquet --sample 100000 \
+    --expectations gx --min-samples 1000 > huge.suite.json
+```
+
+Rules mapped from the profile:
+
+- `expect_table_columns_to_match_set` for the full column list.
+- `expect_column_to_exist` per column.
+- `expect_column_values_to_be_of_type` from the inferred DuckDB dtype
+  (mapped to Python builtins — `int`, `float`, `str`, `bool`, `date`,
+  `datetime`).
+- `expect_column_values_to_not_be_null` when the observed null % is 0.
+- `expect_column_values_to_be_between` for numeric min/max.
+- `expect_column_values_to_be_in_set` when a column's distinct count is
+  ≤ 20 **and** the profile's top-K captured every distinct value (so
+  we never assert against a partial set).
+- `expect_column_value_lengths_to_be_between` for string columns, sized
+  from the top-K samples.
+
+Soda gets an equivalent set of `row_count`, `schema`, `missing_count`,
+`min`/`max`, `invalid_count` + `valid values`, and `valid format`
+checks. Both formats include a `schema_seance` meta block so downstream
+tooling can tell where the suite came from.
+
+Pipe-friendly by design: `--expectations` writes the suite to stdout
+and suppresses Madame Schema's commentary when stdout isn't a TTY, so
+`| jq` and `> file` Just Work. It also can't be combined with `--json`
+(pick one output).
+
 ## Compare two files
 
 `seance compare a.csv b.csv` profiles both files, then flags column

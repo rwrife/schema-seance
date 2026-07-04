@@ -13,6 +13,8 @@ from rich.text import Text
 from . import __version__
 from .diff import SEVERITY_BANDS
 from .diff import compare as compare_reports
+from .export.expectations import SUPPORTED_FORMATS as EXPECTATION_FORMATS
+from .export.expectations import dumps as dumps_expectations
 from .llm import LLMUnavailableError
 from .llm import load_config as load_llm_config
 from .llm import read as llm_read
@@ -264,6 +266,41 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
     default=False,
     help="Skip the temporal analysis (The Hours That Pass) section.",
 )
+@click.option(
+    "--expectations",
+    "expectations_format",
+    type=click.Choice(list(EXPECTATION_FORMATS), case_sensitive=False),
+    default=None,
+    help=(
+        "Emit a starter expectation suite in the given format "
+        "(gx = Great Expectations JSON, soda = Soda Core YAML) "
+        "instead of the pretty terminal view."
+    ),
+)
+@click.option(
+    "--suite-name",
+    "suite_name",
+    default=None,
+    help="Override the suite/dataset name in the exported expectations.",
+)
+@click.option(
+    "--include-pii",
+    "include_pii",
+    is_flag=True,
+    default=False,
+    help=(
+        "Include PII columns in the exported expectation suite (default: "
+        "columns with medium+ PII confidence are skipped)."
+    ),
+)
+@click.option(
+    "--min-samples",
+    "min_samples",
+    type=click.IntRange(min=0),
+    default=0,
+    show_default=True,
+    help=("Skip columns with fewer than N observed non-null values when exporting expectations."),
+)
 @click.pass_context
 def summon(
     ctx: click.Context,
@@ -281,10 +318,21 @@ def summon(
     format_override: str | None,
     region: str | None,
     no_timeseries: bool,
+    expectations_format: str | None,
+    suite_name: str | None,
+    include_pii: bool,
+    min_samples: int,
 ) -> None:
     """Summon the schema of a data file, directory, or glob."""
     console = Console()
     persona = _persona_from_ctx(ctx)
+
+    # --expectations is incompatible with multi-file / --json / --html today.
+    if expectations_format is not None:
+        if isinstance(path, str) and is_multi_input(path):
+            raise click.UsageError("--expectations does not (yet) support multi-file summons.")
+        if as_json:
+            raise click.UsageError("--expectations and --json cannot be combined; pick one output.")
 
     # Multi-file mode: directory / glob / remote glob.
     if isinstance(path, str) and is_multi_input(path):
@@ -375,6 +423,29 @@ def summon(
             dumps_html(report, persona=persona, title=f"Seance — {path.name}"),
             encoding="utf-8",
         )
+
+    if expectations_format is not None:
+        suite_text = dumps_expectations(
+            report,
+            expectations_format,
+            suite_name=suite_name,
+            include_pii=include_pii,
+            min_samples=min_samples,
+        )
+        # Always print the suite on stdout (pipeable). Suppress persona
+        # commentary unless we're on an interactive TTY and the caller
+        # didn't ask for --quiet — the whisper goes to stderr so it
+        # never contaminates the piped payload.
+        click.echo(suite_text, nl=False)
+        if not quiet and console.is_terminal:
+            fmt_pretty = "Great Expectations" if expectations_format == "gx" else "Soda"
+            Console(stderr=True).print(
+                f"[italic dim]{persona.panel_title} whispers: {fmt_pretty} suite "
+                f"summoned for '{path.name}'.[/italic dim]"
+            )
+        # Skip normal rendering and the fail-on-pii gate — the exporter
+        # is a one-shot machine-output mode.
+        return
 
     if quiet:
         pass

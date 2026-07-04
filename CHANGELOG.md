@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Great Expectations / Soda export** — `seance summon --expectations
+  {gx,soda}` now turns the profile into a starter
+  `ExpectationSuite` JSON (GX v3) or a `checks.yml` fragment (Soda
+  Core). Skips PII columns by default (`--include-pii` to opt back in),
+  respects `--suite-name` for the dataset/suite label, and honours
+  `--min-samples` to drop sparse columns after `--sample`. Writes to
+  stdout so it's pipeable; suppresses persona commentary when stdout
+  isn't a TTY. New module `schema_seance/export/expectations.py`.
+  Closes #39.
 - **The Congregation** — multi-file summon. `seance summon` now accepts a
   directory (recursive), a local glob (`data/*.parquet`), or a remote
   glob (`s3://bucket/prefix/*.csv`) and produces a cross-file report:
