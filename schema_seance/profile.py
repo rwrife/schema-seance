@@ -32,7 +32,7 @@ __all__ = [
 ]
 
 # Bumped when the JSON output schema changes in a breaking way.
-PROFILE_SCHEMA_VERSION = 3
+PROFILE_SCHEMA_VERSION = 4
 
 # How many values to pull for PII/anomaly heuristics per column.
 _DETECT_SAMPLE = 500

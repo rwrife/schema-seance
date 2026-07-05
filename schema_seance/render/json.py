@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 from ..profile import PROFILE_SCHEMA_VERSION, ColumnProfile, ProfileReport
+from ..score import ScoreResult, score_to_dict
 
 __all__ = ["report_to_dict", "dumps"]
 
@@ -72,9 +73,19 @@ def _column_to_dict(col: ColumnProfile) -> dict[str, Any]:
     }
 
 
-def report_to_dict(report: ProfileReport) -> dict[str, Any]:
-    """Convert a ProfileReport into the documented JSON-friendly dict."""
-    return {
+def report_to_dict(
+    report: ProfileReport,
+    *,
+    score: ScoreResult | None = None,
+) -> dict[str, Any]:
+    """Convert a ProfileReport into the documented JSON-friendly dict.
+
+    Pass ``score`` to embed a stable ``"score"`` block (from
+    :func:`schema_seance.score.compute_score`). Omitted by default so
+    the payload shape matches the pre-score JSON contract byte-for-byte
+    when scoring isn't requested.
+    """
+    payload: dict[str, Any] = {
         "schema_version": PROFILE_SCHEMA_VERSION,
         "file": {
             "path": str(report.path) if report.path else None,
@@ -88,6 +99,9 @@ def report_to_dict(report: ProfileReport) -> dict[str, Any]:
         "columns": [_column_to_dict(c) for c in report.columns],
         "time_series": [_timeseries_to_dict(t) for t in report.time_series],
     }
+    if score is not None:
+        payload["score"] = score_to_dict(score)
+    return payload
 
 
 def _timeseries_to_dict(ts: Any) -> dict[str, Any]:
@@ -122,10 +136,15 @@ def _timeseries_to_dict(ts: Any) -> dict[str, Any]:
     }
 
 
-def dumps(report: ProfileReport, *, indent: int | None = 2) -> str:
+def dumps(
+    report: ProfileReport,
+    *,
+    indent: int | None = 2,
+    score: ScoreResult | None = None,
+) -> str:
     """Serialize *report* to a stable JSON string."""
     return json.dumps(
-        report_to_dict(report),
+        report_to_dict(report, score=score),
         indent=indent,
         sort_keys=False,
         ensure_ascii=False,

@@ -8,7 +8,7 @@ shape below changes in a backwards-incompatible way.
 
 ```jsonc
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "file": {
     "path": "data.csv",        // string | null
     "size_bytes": 12345,        // int | null
@@ -18,7 +18,21 @@ shape below changes in a backwards-incompatible way.
   "cols": 7,                     // int
   "sampled": false,              // bool — true if --sample was applied
   "sample_size": null,           // int | null — value passed to --sample
-  "columns": [ /* ColumnProfile */ ]
+  "columns": [ /* ColumnProfile */ ],
+  "time_series": [ /* TimeSeriesProfile, optional */ ],
+  "score": {                    // present only when --score flag is set
+    "score": 72,                 // int in [0, 100]
+    "grade": "C",                // "A" | "B" | "C" | "D" | "F"
+    "color": "#dfb317",         // shields.io-style hex for the grade
+    "penalties": [
+      {
+        "kind": "null_density", // null_density | mixed_types | pk_duplicates |
+                                 //   numeric_outliers | pii_exposure | encoding
+        "points": 18,             // int, positive — points deducted
+        "detail": "…human-readable summary…"
+      }
+    ]
+  }
 }
 ```
 
@@ -83,6 +97,7 @@ Exit-code contract:
 - `0` — success.
 - `2` — input unreadable / unsupported.
 - `3` — `--fail-on-pii` set and a finding met or exceeded the band.
+- `6` — `--min-score N` set and the computed quality score is below `N`.
 
 ## Stability contract
 

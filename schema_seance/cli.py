@@ -58,6 +58,7 @@ from .render.html import dumps as dumps_html
 from .render.json import dumps as dumps_json
 from .render.multi import dumps_multi, render_multi
 from .render.terminal import render as render_terminal
+from .score import compute_score, render_badge_svg
 
 
 class _DataInput(click.ParamType):
@@ -142,6 +143,28 @@ def _excel_error_panel(console: Console, persona: Persona, exc: Exception) -> No
             f"The spirits stumble at the workbook. {exc}",
             title=persona.panel_title,
             border_style="red",
+        )
+    )
+
+
+def _render_score_panel(console: Console, persona: Persona, score) -> None:
+    """Print the 🔮 Quality Score panel with a compact breakdown."""
+    color = score.color
+    lines = [
+        f"[bold {color}]{score.score} / 100[/bold {color}]  (Grade: [bold]{score.grade}[/bold])",
+    ]
+    if score.penalties:
+        lines.append("")
+        for p in score.penalties:
+            lines.append(f"  [bold red]-{p.points:>3}[/bold red]  {p.detail}")
+    else:
+        lines.append("[italic dim]The spirits find no flaws.[/italic dim]")
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title=Text(f"🔮 {persona.display_name}'s Quality Score", style="bold magenta"),
+            border_style="magenta",
+            padding=(1, 2),
         )
     )
 
@@ -301,6 +324,43 @@ def main(ctx: click.Context, persona_name: str | None) -> None:
     show_default=True,
     help=("Skip columns with fewer than N observed non-null values when exporting expectations."),
 )
+@click.option(
+    "--score",
+    "want_score",
+    is_flag=True,
+    default=False,
+    help=(
+        "Compute and display a 0-100 Data Quality Score + letter grade, plus "
+        "a short breakdown of what dragged it down. Also included in --json output."
+    ),
+)
+@click.option(
+    "--score-only",
+    "score_only",
+    is_flag=True,
+    default=False,
+    help=(
+        "Print just the numeric quality score to stdout (nothing else) and exit. "
+        "Useful in shell scripts. Implies --score."
+    ),
+)
+@click.option(
+    "--min-score",
+    "min_score",
+    type=click.IntRange(min=0, max=100),
+    default=None,
+    help=(
+        "Exit non-zero (code 6) when the computed quality score is below this "
+        "threshold. Implies --score. Documented alongside --fail-on-pii."
+    ),
+)
+@click.option(
+    "--badge",
+    "badge_path",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    default=None,
+    help=("Write a shields.io-style SVG quality badge to the given path. Implies --score."),
+)
 @click.pass_context
 def summon(
     ctx: click.Context,
@@ -322,10 +382,16 @@ def summon(
     suite_name: str | None,
     include_pii: bool,
     min_samples: int,
+    want_score: bool,
+    score_only: bool,
+    min_score: int | None,
+    badge_path: Path | None,
 ) -> None:
     """Summon the schema of a data file, directory, or glob."""
     console = Console()
     persona = _persona_from_ctx(ctx)
+
+    score_requested = want_score or score_only or min_score is not None or badge_path is not None
 
     # --expectations is incompatible with multi-file / --json / --html today.
     if expectations_format is not None:
@@ -333,6 +399,21 @@ def summon(
             raise click.UsageError("--expectations does not (yet) support multi-file summons.")
         if as_json:
             raise click.UsageError("--expectations and --json cannot be combined; pick one output.")
+        if score_requested:
+            raise click.UsageError(
+                "--expectations cannot be combined with score flags; "
+                "run summon twice if you need both."
+            )
+
+    if score_requested and isinstance(path, str) and is_multi_input(path):
+        raise click.UsageError(
+            "Score flags do not (yet) support multi-file summons; run summon on a single file."
+        )
+
+    if score_only and as_json:
+        raise click.UsageError(
+            "--score-only and --json cannot be combined; --score-only emits a bare integer."
+        )
 
     # Multi-file mode: directory / glob / remote glob.
     if isinstance(path, str) and is_multi_input(path):
@@ -418,6 +499,20 @@ def summon(
 
     report = profile_relation(relation, path=path, sample=sample, timeseries=not no_timeseries)
 
+    score_result = compute_score(report) if score_requested else None
+
+    if badge_path is not None and score_result is not None:
+        badge_path.write_text(render_badge_svg(score_result), encoding="utf-8")
+
+    if score_only:
+        # Bare integer only — nothing else on stdout, and we deliberately
+        # skip the terminal render / html / fail-on-pii gates so shell
+        # scripts get clean, parseable output.
+        click.echo(str(score_result.score))  # score_only implies score_requested
+        if min_score is not None and score_result.score < min_score:
+            raise SystemExit(6)
+        return
+
     if html_path is not None:
         html_path.write_text(
             dumps_html(report, persona=persona, title=f"Seance — {path.name}"),
@@ -450,9 +545,11 @@ def summon(
     if quiet:
         pass
     elif as_json:
-        click.echo(dumps_json(report))
+        click.echo(dumps_json(report, score=score_result))
     else:
         render_terminal(report, console=console)
+        if score_result is not None:
+            _render_score_panel(console, persona, score_result)
 
     if fail_on_pii is not None:
         threshold = CONFIDENCE_BANDS[fail_on_pii.lower()]
@@ -474,6 +571,15 @@ def summon(
                     f"{threshold:.2f})."
                 )
             raise SystemExit(3)
+
+    if min_score is not None and score_result is not None and score_result.score < min_score:
+        if not as_json and not quiet:
+            console.print(
+                f"[bold red]{persona.refusal_phrase}[/bold red] "
+                f"quality score {score_result.score} (grade {score_result.grade}) "
+                f"is below --min-score {min_score}."
+            )
+        raise SystemExit(6)
 
 
 @main.command()
