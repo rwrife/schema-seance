@@ -358,6 +358,39 @@ overall severity is the worst column severity; `--fail-on` exits with
 code **5** when it meets or exceeds the chosen level.
 
 
+## Watch mode — re-summon on change
+
+`seance watch <file>` re-runs the profile every time the file changes
+on disk and re-renders in place. Handy while iterating on an ETL
+output or a schema fix — you save, Madame Schema re-reads the leaves.
+
+```bash
+uv run seance watch data.csv                    # clear + re-render on save
+uv run seance watch 'exports/*.csv'             # glob → multi-file summon
+uv run seance watch data.csv --diff             # show drift vs previous render
+uv run seance watch data.csv --interval 2       # polling fallback interval (s)
+uv run seance watch data.csv --debounce-ms 250  # tighten the burst-collapse window
+uv run seance watch data.csv --no-clear         # keep scrollback (useful when piping)
+```
+
+**How it works:**
+
+- Uses [`watchfiles`](https://watchfiles.helpmanual.io/) when the optional
+  `[watch]` extra is installed (`pip install schema-seance[watch]`);
+  otherwise falls back to mtime polling (default 1s, tune with `--interval`).
+- Debounces bursty writes (default 500 ms) so editor "save + swap-file"
+  storms don't trigger multiple renders.
+- `--diff` re-uses the `seance compare` engine to show what changed since
+  the previous render — perfect for watching schema drift heal (or break)
+  as you edit the upstream file.
+- Ctrl-C exits cleanly. Mid-edit parse errors are shown in a yellow
+  panel; the loop stays alive so the next save re-renders.
+- Works with every reader (`csv`, `tsv`, `jsonl`, `ndjson`, `parquet`,
+  `sqlite`/`db`, `xlsx`/`xlsm`).
+- Remote inputs (`s3://…`, `http(s)://…`) are rejected — watch mode
+  needs a filesystem.
+
+
 ## Personas
 
 The narrator's voice is swappable. Pass `--persona <id>` (any subcommand),

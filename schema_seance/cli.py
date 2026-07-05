@@ -59,6 +59,14 @@ from .render.json import dumps as dumps_json
 from .render.multi import dumps_multi, render_multi
 from .render.terminal import render as render_terminal
 from .score import compute_score, render_badge_svg
+from .watch import (
+    DEFAULT_DEBOUNCE_MS,
+    DEFAULT_POLL_INTERVAL,
+    MtimePollSource,
+    expand_targets,
+    have_watchfiles,
+    run_watch_loop,
+)
 
 
 class _DataInput(click.ParamType):
@@ -879,6 +887,225 @@ def compare(
                     f"diff severity {diff.severity!r} \u2265 {fail_on!r} threshold."
                 )
             raise SystemExit(5)
+
+
+class _WatchInput(click.ParamType):
+    """Click type for ``seance watch`` — accepts a local file or glob.
+
+    Remote URLs (``s3://``, ``http(s)://``) are rejected: they can't be
+    watched for changes with a filesystem watcher.
+    """
+
+    name = "path_or_glob"
+
+    def convert(self, value, param, ctx):  # type: ignore[override]
+        if value is None:
+            return value
+        text = str(value)
+        if is_remote(text):
+            self.fail(
+                (
+                    "remote inputs (s3://, http(s)://) cannot be watched — "
+                    "use `seance summon` instead."
+                ),
+                param,
+                ctx,
+            )
+        # Globs pass through untouched; single existing files coerce to Path.
+        if any(ch in text for ch in "*?[") or "**" in text:
+            return text
+        local = click.Path(exists=True, dir_okay=False, readable=True, path_type=Path)
+        return local.convert(value, param, ctx)
+
+
+WATCH_INPUT = _WatchInput()
+
+
+@main.command()
+@click.argument(
+    "path",
+    type=WATCH_INPUT,
+)
+@click.option(
+    "--table",
+    "table",
+    default=None,
+    help="Table name to read (SQLite only). Defaults to the first table.",
+)
+@click.option(
+    "--sheet",
+    "sheet",
+    default=None,
+    help="Sheet name or 0-based index (Excel only). Defaults to the active sheet.",
+)
+@click.option(
+    "--sample",
+    "sample",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Profile only the first N rows on each render.",
+)
+@click.option(
+    "--diff",
+    "show_diff",
+    is_flag=True,
+    default=False,
+    help=(
+        "After each re-render, show schema drift vs the previous render "
+        "(reuses the `seance compare` engine)."
+    ),
+)
+@click.option(
+    "--interval",
+    "interval",
+    type=click.FloatRange(min=0.05),
+    default=DEFAULT_POLL_INTERVAL,
+    show_default=True,
+    help="Polling fallback interval in seconds (used when the [watch] extra is missing).",
+)
+@click.option(
+    "--debounce-ms",
+    "debounce_ms",
+    type=click.IntRange(min=0),
+    default=DEFAULT_DEBOUNCE_MS,
+    show_default=True,
+    help="Ignore bursty writes within this many milliseconds.",
+)
+@click.option(
+    "--no-clear",
+    "no_clear",
+    is_flag=True,
+    default=False,
+    help="Don't clear the screen between renders (useful when piping / debugging).",
+)
+@click.option(
+    "--poll",
+    "force_poll",
+    is_flag=True,
+    default=False,
+    help="Force the mtime-polling fallback even when [watch] is installed.",
+)
+@click.pass_context
+def watch(
+    ctx: click.Context,
+    path: Path | str,
+    table: str | None,
+    sheet: str | None,
+    sample: int | None,
+    show_diff: bool,
+    interval: float,
+    debounce_ms: int,
+    no_clear: bool,
+    force_poll: bool,
+) -> None:
+    """Re-summon a file (or glob) whenever it changes on disk.
+
+    Clears the screen and re-renders the profile every time the target
+    is saved. ``--diff`` also prints a schema-drift panel showing what
+    changed since the previous render. Ctrl-C exits cleanly.
+    """
+    console = Console()
+    persona = _persona_from_ctx(ctx)
+
+    if isinstance(path, Path):
+        patterns: list[str] = [str(path)]
+    else:
+        patterns = [path]
+
+    files, _dirs = expand_targets(patterns)
+    if not files:
+        console.print(
+            Panel(
+                f"The spirits find nothing at [bold]{patterns[0]}[/bold]. "
+                "Widen the glob or point at an existing file.",
+                title=persona.panel_title,
+                border_style="red",
+            )
+        )
+        raise SystemExit(2)
+
+    coerced_sheet = _coerce_sheet(sheet)
+    prior_reports: dict[Path, object] = {}
+
+    def _render(paths: list[Path], iteration: int) -> None:
+        if not no_clear:
+            console.clear()
+        header = Text(persona.panel_title, style="bold magenta")
+        subtitle = (
+            f"initial render · watching {len(files)} file(s)"
+            if iteration == 0
+            else f"re-summon #{iteration} · {len(paths)} change(s) detected"
+        )
+        header.append(f"  ·  {subtitle}", style="italic dim")
+        console.print(
+            Panel(
+                "\n".join(
+                    [
+                        f"[bold]Targets:[/bold] {', '.join(str(p) for p in files)}",
+                        f"[bold]Debounce:[/bold] {debounce_ms} ms",
+                        "[bold]Source:[/bold] "
+                        + (
+                            "watchfiles"
+                            if (have_watchfiles() and not force_poll)
+                            else f"mtime poll ({interval:.2f}s)"
+                        ),
+                        "[dim]Ctrl-C to exit.[/dim]",
+                    ]
+                ),
+                title=header,
+                border_style="magenta",
+                padding=(1, 2),
+            )
+        )
+        # For the initial render every target is "changed"; after that
+        # re-profile only the files the source flagged.
+        to_render = files if iteration == 0 else paths
+        for target in to_render:
+            report = _load_and_profile(
+                console, persona, target, table=table, sample=sample, sheet=coerced_sheet
+            )
+            render_terminal(report, console=console)
+            if show_diff:
+                prev = prior_reports.get(target.resolve())
+                if prev is not None:
+                    diff = compare_reports(prev, report)
+                    render_diff_terminal(diff, console=console, persona=persona)
+                prior_reports[target.resolve()] = report
+            elif iteration == 0:
+                # Keep the initial reports on hand so a mid-flight
+                # ``--diff`` toggle would have a baseline. Cheap.
+                prior_reports[target.resolve()] = report
+
+    def _on_error(exc: BaseException) -> None:
+        if isinstance(exc, KeyboardInterrupt):
+            return
+        keep_watch_note = "[dim]Keeping watch. Fix the file and save again.[/dim]"
+        console.print(
+            Panel(
+                f"The last render failed: {exc}\n{keep_watch_note}",
+                title=persona.panel_title,
+                border_style="yellow",
+            )
+        )
+
+    source = None
+    if force_poll or not have_watchfiles():
+        source = MtimePollSource(files, interval=interval)
+
+    try:
+        run_watch_loop(
+            files,
+            render=_render,
+            source=source,
+            debounce_ms=debounce_ms,
+            poll_interval=interval,
+            prefer_watchfiles=not force_poll,
+            on_error=_on_error,
+        )
+    except KeyboardInterrupt:
+        console.print(
+            f"\n[italic dim]{persona.panel_title} closes the parlor. Farewell.[/italic dim]"
+        )
 
 
 @main.command()
