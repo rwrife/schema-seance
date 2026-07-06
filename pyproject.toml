@@ -29,6 +29,9 @@ tui = [
 excel = [
     "openpyxl>=3.1.5",
 ]
+watch = [
+    "watchfiles>=0.20",
+]
 
 [project.scripts]
 seance = "schema_seance.cli:main"
@@ -61,4 +64,5 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.5",
     "textual>=0.60",
+    "watchfiles>=0.20",
 ]

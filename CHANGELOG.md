@@ -7,6 +7,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Watch mode** — `seance watch <file>` re-summons the profile every
+  time the file changes on disk, with an event-driven fast path via the
+  optional `[watch]` extra (`pip install schema-seance[watch]`, backed
+  by `watchfiles`) and a zero-dependency mtime-polling fallback. New
+  flags: `--diff` (reuses `seance compare` to show schema drift vs the
+  previous render), `--interval` (polling cadence, seconds),
+  `--debounce-ms` (default 500), `--no-clear` (keep scrollback), and
+  `--poll` (force the polling fallback even when `watchfiles` is
+  installed). Accepts single files or globs; each reader
+  (csv/jsonl/parquet/sqlite/xlsx) is supported. Remote inputs
+  (`s3://`, `http(s)://`) are rejected — watch mode needs a
+  filesystem. New module `schema_seance/watch.py` exposes the pure
+  `run_watch_loop` / `debounce_events` / `MtimePollSource` API for
+  library callers. Closes #41.
 - **Data Quality Score + Grade + Badge** — `seance summon --score`
   rolls the full profile into a 0-100 quality score and A-F letter
   grade with a compact breakdown (null density, mixed types, PK
