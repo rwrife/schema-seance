@@ -119,6 +119,7 @@ def _profile_column(
     rows: int,
     *,
     top_k: int,
+    pii_name_rules: list | None = None,
 ) -> ColumnProfile:
     qname = _quote_ident(name)
     numeric = _is_numeric(dtype)
@@ -218,7 +219,7 @@ def _profile_column(
     except duckdb.Error:
         sample_values = []
 
-    pii_findings = tuple(detect_pii(name, dtype, sample_values))
+    pii_findings = tuple(detect_pii(name, dtype, sample_values, name_rules=pii_name_rules))
     anomaly_findings = tuple(
         detect_anomalies(
             name=name,
@@ -254,6 +255,7 @@ def profile(
     sample: int | None = None,
     top_k: int = 5,
     timeseries: bool = True,
+    pii_name_rules: list | None = None,
 ) -> ProfileReport:
     """Compute a full profile of *relation*.
 
@@ -268,6 +270,10 @@ def profile(
         ``rows`` reflects the sampled size; ``sampled=True`` flags it.
     top_k:
         Number of top frequent values to capture per column.
+    pii_name_rules:
+        Optional list of user-declared PII name rules (from
+        ``[pii].name_rules`` in the config file). Additive-only —
+        they never suppress built-in detectors.
     """
     if path is None:
         p: Path | str | None = None
@@ -291,7 +297,7 @@ def profile(
     column_profiles: list[ColumnProfile] = []
     ts_profiles: list[TimeSeriesProfile] = []
     for name, dtype in zip(columns, dtypes, strict=True):
-        col = _profile_column(rel, name, dtype, rows, top_k=top_k)
+        col = _profile_column(rel, name, dtype, rows, top_k=top_k, pii_name_rules=pii_name_rules)
         column_profiles.append(col)
         if timeseries:
             ts = _column_timeseries(rel, name, dtype)

@@ -12,11 +12,13 @@ bonus when the header obviously implies the kind (e.g. ``email``,
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from dataclasses import dataclass
 
 __all__ = [
     "PIIFinding",
+    "PiiNameRule",
     "detect_column",
     "confidence_band",
     "CONFIDENCE_BANDS",
@@ -37,6 +39,27 @@ class PIIFinding:
     match_ratio: float
     matched: int
     sampled: int
+
+
+@dataclass(frozen=True)
+class PiiNameRule:
+    """User-declared column-name hint for a PII detector.
+
+    ``pattern`` is a case-insensitive fnmatch pattern applied to the
+    raw column name (so ``*_ssn`` matches both ``user_ssn`` and
+    ``primary_ssn``). ``detector`` names the finding kind to emit
+    (e.g. ``ssn``, ``email``, or an arbitrary user-defined kind).
+    ``confidence`` is one of ``low`` / ``medium`` / ``high`` and maps
+    to the midpoint of the corresponding band.
+
+    Rules are purely ADDITIVE. They can add a finding for a column
+    that would otherwise not be flagged, but they never suppress a
+    built-in finding.
+    """
+
+    pattern: str
+    detector: str
+    confidence: str = "medium"
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +220,19 @@ def detect_column(
     name: str,
     dtype: str,
     values: list,
+    *,
+    name_rules: list[PiiNameRule] | None = None,
 ) -> list[PIIFinding]:
     """Return all PII findings for one column from a sample of values.
 
     ``values`` should be non-null distinct or representative samples.
     Non-string values are stringified for matcher purposes.
+
+    ``name_rules`` are user-declared column-name hints (typically from
+    ``[pii].name_rules`` in the config file). They ADD findings when
+    the column name matches the pattern and no higher-confidence
+    built-in finding already exists for the same kind; they never
+    suppress built-in findings.
     """
     findings: list[PIIFinding] = []
     col_norm = _norm_col(name)
@@ -279,6 +310,31 @@ def detect_column(
                     confidence=conf,
                     match_ratio=round(ratio, 3),
                     matched=int(ratio * sampled),
+                    sampled=sampled,
+                )
+            )
+
+    # User rules (additive). Apply after built-ins so a real match with
+    # a higher confidence wins, but a rule can still surface a finding
+    # the heuristics missed.
+    if name_rules:
+        for rule in name_rules:
+            if not fnmatch.fnmatchcase(name.lower(), rule.pattern.lower()):
+                continue
+            band = rule.confidence.lower()
+            # Midpoint of the band it declared; low=0.45 gives a
+            # visible hit that still sorts below high heuristics.
+            conf = {
+                "low": (CONFIDENCE_BANDS["low"] + CONFIDENCE_BANDS["medium"]) / 2,
+                "medium": (CONFIDENCE_BANDS["medium"] + CONFIDENCE_BANDS["high"]) / 2,
+                "high": (CONFIDENCE_BANDS["high"] + 1.0) / 2,
+            }[band]
+            findings.append(
+                PIIFinding(
+                    kind=rule.detector,
+                    confidence=round(conf, 3),
+                    match_ratio=0.0,
+                    matched=0,
                     sampled=sampled,
                 )
             )

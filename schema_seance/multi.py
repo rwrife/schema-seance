@@ -307,6 +307,7 @@ def profile_many(
     format: str | None = None,
     timeseries: bool = True,
     top_k: int = 5,
+    pii_name_rules: list | None = None,
 ) -> MultiReport:
     """Profile each file in *inputs* and roll up a MultiReport."""
     outcomes: list[FileOutcome] = []
@@ -325,6 +326,7 @@ def profile_many(
                 sample=sample,
                 top_k=top_k,
                 timeseries=timeseries,
+                pii_name_rules=pii_name_rules,
             )
             outcomes.append(FileOutcome(path=str(path), ok=True, report=report))
         except (
