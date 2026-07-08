@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import click
@@ -11,6 +12,14 @@ from rich.panel import Panel
 from rich.text import Text
 
 from . import __version__
+from .config import (
+    ConfigError,
+    ConfigNotFoundError,
+    LoadedConfig,
+)
+from .config import (
+    load as load_config,
+)
 from .diff import SEVERITY_BANDS
 from .diff import compare as compare_reports
 from .export.expectations import SUPPORTED_FORMATS as EXPECTATION_FORMATS
@@ -136,6 +145,27 @@ def _persona_from_ctx(ctx: click.Context) -> Persona:
     return persona
 
 
+def _loaded_config(ctx: click.Context) -> LoadedConfig:
+    """Return the LoadedConfig from ctx.obj, or an empty one."""
+    obj = ctx.obj or {}
+    lc = obj.get("loaded_config")
+    if isinstance(lc, LoadedConfig):
+        return lc
+    return LoadedConfig()
+
+
+def _cfg_get(ctx: click.Context, key: str, default=None):
+    """Look up a top-level (dotted) key from the loaded config."""
+    lc = _loaded_config(ctx)
+    if "." not in key:
+        return lc.values.get(key, default)
+    section, subkey = key.split(".", 1)
+    sect = lc.values.get(section)
+    if isinstance(sect, dict):
+        return sect.get(subkey, default)
+    return default
+
+
 def _coerce_sheet(value: str | None) -> str | int | None:
     """Click gives us a string; pass through ints when numeric."""
     if value is None:
@@ -185,20 +215,64 @@ def _render_score_panel(console: Console, persona: Persona, score) -> None:
     type=click.Choice(available_ids(), case_sensitive=False),
     default=None,
     help=(
-        "Narrator voice. Defaults to SEANCE_PERSONA env var, then 'madame'. "
-        f"Available: {', '.join(available_ids())}."
+        "Narrator voice. Defaults to SEANCE_PERSONA env var, then the config "
+        f"file, then 'madame'. Available: {', '.join(available_ids())}."
     ),
 )
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Force a specific config file and skip discovery. "
+        "Precedence: CLI flag > env var > config file > default."
+    ),
+)
+@click.option(
+    "--no-config",
+    "no_config",
+    is_flag=True,
+    default=False,
+    help="Disable config discovery (useful for hermetic CI runs).",
+)
 @click.pass_context
-def main(ctx: click.Context, persona_name: str | None) -> None:
+def main(
+    ctx: click.Context,
+    persona_name: str | None,
+    config_path: Path | None,
+    no_config: bool,
+) -> None:
     """schema-seance — channel the spirits of your data."""
+    console = Console()
     try:
-        persona = resolve_persona(persona_name)
-    except UnknownPersonaError as exc:  # pragma: no cover - Click guards via Choice
+        loaded = load_config(explicit=config_path, disable=no_config)
+    except ConfigNotFoundError as exc:
+        raise click.BadParameter(str(exc), param_hint="--config") from exc
+    except ConfigError as exc:
+        # Rich would try to parse ``[llm]`` etc. as markup; escape it.
+        from rich.markup import escape as _rich_escape
+
+        console.print(f"[red]Config error:[/red] {_rich_escape(str(exc))}")
+        ctx.exit(2)
+
+    ctx.ensure_object(dict)["loaded_config"] = loaded
+
+    # Persona precedence: CLI flag > SEANCE_PERSONA env > config file > default.
+    persona_choice = persona_name
+    if persona_choice is None:
+        env_persona = (os.environ.get("SEANCE_PERSONA") or "").strip()
+        if env_persona:
+            persona_choice = env_persona
+        elif isinstance(loaded.values.get("persona"), str):
+            persona_choice = loaded.values["persona"]
+    try:
+        persona = resolve_persona(persona_choice)
+    except UnknownPersonaError as exc:
         raise click.BadParameter(str(exc), param_hint="--persona") from exc
     ctx.ensure_object(dict)["persona"] = persona
     if ctx.invoked_subcommand is None:
-        _print_greeting(Console(), persona)
+        _print_greeting(console, persona)
 
 
 @main.command()
@@ -399,6 +473,33 @@ def summon(
     console = Console()
     persona = _persona_from_ctx(ctx)
 
+    # Overlay config-file defaults for anything the user didn't pass on the CLI.
+    # ``ctx.get_parameter_source(name)`` returns ``DEFAULT`` for values that
+    # weren't provided; we treat DEFAULT and DEFAULT_MAP the same way so a
+    # config value only wins when the flag was not explicitly set.
+    from click.core import ParameterSource as _PS
+
+    def _from_default(param: str) -> bool:
+        src = ctx.get_parameter_source(param)
+        return src in (_PS.DEFAULT, _PS.DEFAULT_MAP)
+
+    if sample is None and _from_default("sample"):
+        cfg_sample = _cfg_get(ctx, "sample")
+        if isinstance(cfg_sample, int):
+            sample = cfg_sample
+    if fail_on_pii is None and _from_default("fail_on_pii"):
+        cfg_fail = _cfg_get(ctx, "fail_on_pii")
+        if isinstance(cfg_fail, str):
+            fail_on_pii = cfg_fail
+    if not no_timeseries and _from_default("no_timeseries"):
+        cfg_no_ts = _cfg_get(ctx, "no_timeseries")
+        if isinstance(cfg_no_ts, bool):
+            no_timeseries = cfg_no_ts
+    if min_score is None and _from_default("min_score"):
+        cfg_min = _cfg_get(ctx, "min_score")
+        if isinstance(cfg_min, int):
+            min_score = cfg_min
+
     score_requested = want_score or score_only or min_score is not None or badge_path is not None
 
     # --expectations is incompatible with multi-file / --json / --html today.
@@ -450,6 +551,7 @@ def summon(
             region=region,
             format=format_override,
             timeseries=not no_timeseries,
+            pii_name_rules=_cfg_get(ctx, "pii.name_rules"),
         )
         if quiet:
             pass
@@ -505,7 +607,13 @@ def summon(
         _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
 
-    report = profile_relation(relation, path=path, sample=sample, timeseries=not no_timeseries)
+    report = profile_relation(
+        relation,
+        path=path,
+        sample=sample,
+        timeseries=not no_timeseries,
+        pii_name_rules=_cfg_get(ctx, "pii.name_rules"),
+    )
 
     score_result = compute_score(report) if score_requested else None
 
@@ -673,6 +781,17 @@ def read(
     """Profile a file, then ask an LLM for a 3-paragraph reading."""
     console = Console()
     persona = _persona_from_ctx(ctx)
+
+    # Overlay `--sample` from config if not explicitly set.
+    from click.core import ParameterSource as _PS
+
+    if sample is None and ctx.get_parameter_source("sample") in (
+        _PS.DEFAULT,
+        _PS.DEFAULT_MAP,
+    ):
+        cfg_sample = _cfg_get(ctx, "sample")
+        if isinstance(cfg_sample, int):
+            sample = cfg_sample
     try:
         relation = load(
             path,
@@ -712,12 +831,21 @@ def read(
         _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
 
-    report = profile_relation(relation, path=path, sample=sample)
+    report = profile_relation(
+        relation,
+        path=path,
+        sample=sample,
+        pii_name_rules=_cfg_get(ctx, "pii.name_rules"),
+    )
     if show_profile and not quiet:
         render_terminal(report, console=console)
 
     try:
-        config = load_llm_config(timeout=timeout)
+        config = load_llm_config(
+            timeout=timeout,
+            base_url_default=_cfg_get(ctx, "llm.base_url"),
+            model_default=_cfg_get(ctx, "llm.model"),
+        )
     except LLMUnavailableError as exc:
         console.print(
             Panel(
@@ -783,6 +911,7 @@ def _load_and_profile(
     table: str | None,
     sample: int | None,
     sheet: str | int | None = None,
+    pii_name_rules: list | None = None,
 ):
     try:
         relation = load(path, table=table, sheet=sheet)
@@ -807,7 +936,7 @@ def _load_and_profile(
     except ExcelReaderError as exc:
         _excel_error_panel(console, persona, exc)
         raise SystemExit(2) from exc
-    return profile_relation(relation, path=path, sample=sample)
+    return profile_relation(relation, path=path, sample=sample, pii_name_rules=pii_name_rules)
 
 
 @main.command()
@@ -869,8 +998,13 @@ def compare(
     """Compare two data files and surface schema/PII/distribution drift."""
     console = Console()
     persona = _persona_from_ctx(ctx)
-    before_report = _load_and_profile(console, persona, before, table=before_table, sample=sample)
-    after_report = _load_and_profile(console, persona, after, table=after_table, sample=sample)
+    rules = _cfg_get(ctx, "pii.name_rules")
+    before_report = _load_and_profile(
+        console, persona, before, table=before_table, sample=sample, pii_name_rules=rules
+    )
+    after_report = _load_and_profile(
+        console, persona, after, table=after_table, sample=sample, pii_name_rules=rules
+    )
     diff = compare_reports(before_report, after_report)
 
     if as_json:
@@ -1007,6 +1141,26 @@ def watch(
     console = Console()
     persona = _persona_from_ctx(ctx)
 
+    # Overlay [watch] config for --interval / --debounce-ms and --sample
+    # for anything the user didn't pass on the CLI.
+    from click.core import ParameterSource as _PS
+
+    def _from_default(param: str) -> bool:
+        return ctx.get_parameter_source(param) in (_PS.DEFAULT, _PS.DEFAULT_MAP)
+
+    if sample is None and _from_default("sample"):
+        cfg_sample = _cfg_get(ctx, "sample")
+        if isinstance(cfg_sample, int):
+            sample = cfg_sample
+    if _from_default("interval"):
+        cfg_poll = _cfg_get(ctx, "watch.poll_interval")
+        if isinstance(cfg_poll, (int, float)):
+            interval = float(cfg_poll)
+    if _from_default("debounce_ms"):
+        cfg_deb = _cfg_get(ctx, "watch.debounce_ms")
+        if isinstance(cfg_deb, int):
+            debounce_ms = cfg_deb
+
     if isinstance(path, Path):
         patterns: list[str] = [str(path)]
     else:
@@ -1062,7 +1216,13 @@ def watch(
         to_render = files if iteration == 0 else paths
         for target in to_render:
             report = _load_and_profile(
-                console, persona, target, table=table, sample=sample, sheet=coerced_sheet
+                console,
+                persona,
+                target,
+                table=table,
+                sample=sample,
+                sheet=coerced_sheet,
+                pii_name_rules=_cfg_get(ctx, "pii.name_rules"),
             )
             render_terminal(report, console=console)
             if show_diff:
@@ -1279,7 +1439,13 @@ def redact(
         raise click.BadParameter(str(exc), param_hint="--strategy") from exc
 
     report = _load_and_profile(
-        console, persona, path, table=table, sample=None, sheet=_coerce_sheet(sheet)
+        console,
+        persona,
+        path,
+        table=table,
+        sample=None,
+        sheet=_coerce_sheet(sheet),
+        pii_name_rules=_cfg_get(ctx, "pii.name_rules"),
     )
     try:
         plan = build_redaction_plan(
@@ -1434,6 +1600,115 @@ def list_personas() -> None:
         p = PERSONAS[pid]
         console.print(f"[bold magenta]{p.emoji} {pid}[/bold magenta] — {p.display_name}")
         console.print(f"    [dim]{p.tagline}[/dim]")
+
+
+@main.command(name="config")
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit machine-readable JSON instead of the pretty view.",
+)
+@click.pass_context
+def show_config(ctx: click.Context, as_json: bool) -> None:
+    """Show the fully-resolved config plus where each value came from.
+
+    Secrets like ``SEANCE_LLM_API_KEY`` are never printed — they're
+    masked as ``***`` even in JSON output.
+    """
+    loaded = _loaded_config(ctx)
+    persona = _persona_from_ctx(ctx)
+    console = Console()
+
+    resolved = _resolved_config_view(loaded)
+
+    if as_json:
+        click.echo(json.dumps(resolved, indent=2, sort_keys=True))
+        return
+
+    title = Text(persona.panel_title, style="bold magenta")
+    title.append("  ·  configuration", style="italic dim")
+    lines: list[str] = []
+    if loaded.sources_by_path:
+        lines.append("[dim]Sources consulted (highest → lowest):[/dim]")
+        for src in loaded.sources_by_path:
+            lines.append(f"  [cyan]{src}[/cyan]")
+    else:
+        lines.append("[dim]No config files discovered.[/dim]")
+    lines.append("")
+    for key in sorted(resolved):
+        entry = resolved[key]
+        val = entry["value"]
+        src = entry["source"]
+        val_repr = json.dumps(val, sort_keys=True) if not isinstance(val, str) else repr(val)
+        lines.append(f"[bold]{key}[/bold] = {val_repr}  [dim]# from {src}[/dim]")
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title=title,
+            border_style="magenta",
+            padding=(1, 2),
+        )
+    )
+
+
+_SECRET_ENV_VARS: frozenset[str] = frozenset({"SEANCE_LLM_API_KEY"})
+
+
+def _resolved_config_view(loaded: LoadedConfig) -> dict[str, dict[str, object]]:
+    """Build the ``{key: {value, source}}`` view for ``seance config``.
+
+    Layers env vars on top of the loaded config (env wins over file per
+    the precedence contract) and masks any secret env var values.
+    """
+    out: dict[str, dict[str, object]] = {}
+
+    # Start with what the config files gave us.
+    for section_key, value in loaded.values.items():
+        if isinstance(value, dict):
+            for sub, sub_val in value.items():
+                dotted = f"{section_key}.{sub}"
+                src = loaded.sources.get(dotted, "config")
+                out[dotted] = {
+                    "value": _serialise_value(sub_val),
+                    "source": src,
+                }
+        else:
+            src = loaded.sources.get(section_key, "config")
+            out[section_key] = {
+                "value": _serialise_value(value),
+                "source": src,
+            }
+
+    # Overlay env-var settings (higher precedence than file).
+    env = os.environ
+    env_map = {
+        "persona": "SEANCE_PERSONA",
+        "llm.base_url": "SEANCE_LLM_BASE_URL",
+        "llm.model": "SEANCE_LLM_MODEL",
+        "llm.api_key": "SEANCE_LLM_API_KEY",
+    }
+    for key, env_name in env_map.items():
+        raw = env.get(env_name, "").strip()
+        if not raw:
+            continue
+        display: object = "***" if env_name in _SECRET_ENV_VARS else raw
+        out[key] = {"value": display, "source": f"env:{env_name}"}
+
+    return out
+
+
+def _serialise_value(value: object) -> object:
+    """Turn config values into JSON-safe forms for the resolved view."""
+    if isinstance(value, list):
+        return [_serialise_value(v) for v in value]
+    if hasattr(value, "__dataclass_fields__"):
+        # PiiNameRule and friends.
+        from dataclasses import asdict
+
+        return asdict(value)
+    return value
 
 
 if __name__ == "__main__":  # pragma: no cover

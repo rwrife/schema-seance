@@ -391,6 +391,75 @@ uv run seance watch data.csv --no-clear         # keep scrollback (useful when p
   needs a filesystem.
 
 
+## Configuration
+
+Setting the same 4-6 flags on every invocation? Drop them in a config
+file and forget. `schema-seance` reads TOML from three locations, with
+CLI flags and env vars still on top for one-off overrides.
+
+**Resolution order (highest wins):**
+
+1. CLI flag (`--persona noir`, `--sample 500`, …)
+2. Environment variable (`SEANCE_PERSONA`, `SEANCE_LLM_*`, …)
+3. `./.seancerc.toml` — walks up from CWD (like `ruff` / `uv`)
+4. `[tool.seance]` in the nearest `pyproject.toml` — same walk
+5. `~/.config/schema-seance/config.toml` (respects `$XDG_CONFIG_HOME`)
+6. Built-in defaults
+
+**Example `.seancerc.toml`:**
+
+```toml
+persona = "noir"
+sample = 100_000
+fail_on_pii = "high"
+min_score = 70
+no_timeseries = false
+
+[llm]
+base_url = "http://localhost:11434/v1"
+model = "llama3.1"
+# api_key intentionally not settable here — env only, so it never
+# ends up in a checked-in file.
+
+[pii]
+# Additive user rules: emit a finding when a column name matches.
+# Never suppresses built-in heuristics.
+name_rules = [
+  { pattern = "*_ssn", detector = "ssn", confidence = "high" },
+  { pattern = "email_*", detector = "email", confidence = "high" },
+]
+
+[watch]
+debounce_ms = 500
+poll_interval = 2.0
+
+[render]
+color = "auto"  # auto | always | never
+```
+
+Everything maps 1:1 to a CLI flag (kebab → snake). Unknown top-level
+keys just warn, so old CLIs keep working with newer configs. Unknown
+keys under `[llm]`, `[pii]`, `[watch]`, `[render]` are hard errors so
+typos don't silently misconfigure the tool.
+
+**Force a file or disable discovery:**
+
+```bash
+seance --config /path/to/rc.toml summon data.csv   # skip discovery entirely
+seance --no-config summon data.csv                 # hermetic (great for CI)
+```
+
+**Inspect what actually applied:**
+
+```bash
+seance config          # pretty view with per-key provenance
+seance config --json   # machine-readable
+```
+
+`seance config` also shows env-var overrides. Secrets
+(`SEANCE_LLM_API_KEY`) are always masked as `***`, even in JSON.
+
+
 ## Personas
 
 The narrator's voice is swappable. Pass `--persona <id>` (any subcommand),

@@ -104,18 +104,29 @@ def load_config(
     *,
     env: dict[str, str] | None = None,
     timeout: float | None = None,
+    base_url_default: str | None = None,
+    model_default: str | None = None,
 ) -> LLMConfig:
-    """Resolve provider config from env vars.
+    """Resolve provider config from env vars, with optional defaults.
 
-    Recognised:
+    Recognised env vars:
       * ``SEANCE_LLM_BASE_URL`` — required (e.g. ``https://api.openai.com/v1``)
       * ``SEANCE_LLM_API_KEY`` — optional (local providers often skip it)
       * ``SEANCE_LLM_MODEL`` — required
+
+    ``base_url_default`` and ``model_default`` (typically sourced from a
+    config file) are used only when the corresponding env var is empty.
+    API keys are never accepted from anywhere but the env var, so they
+    stay out of files that are easy to accidentally commit.
     """
     e = env if env is not None else os.environ
     base_url = e.get("SEANCE_LLM_BASE_URL", "").strip()
     api_key = (e.get("SEANCE_LLM_API_KEY") or "").strip() or None
     model = e.get("SEANCE_LLM_MODEL", "").strip()
+    if not base_url and base_url_default:
+        base_url = base_url_default.strip()
+    if not model and model_default:
+        model = model_default.strip()
     if not base_url:
         raise LLMUnavailableError(
             "SEANCE_LLM_BASE_URL is not set. Point it at an OpenAI-compatible "

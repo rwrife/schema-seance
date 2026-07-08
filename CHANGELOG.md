@@ -7,6 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Config file support** — the same 4-6 flags on every invocation now
+  live in a `.seancerc.toml`, `[tool.seance]` in `pyproject.toml`, or
+  `~/.config/schema-seance/config.toml` (respects `$XDG_CONFIG_HOME`).
+  Resolution order: CLI flag > env var > `.seancerc.toml` > pyproject >
+  user-global > default. New group-level flags `--config PATH` (force a
+  specific file, skip discovery) and `--no-config` (hermetic runs).
+  New `seance config` subcommand prints the fully-resolved config with
+  per-key provenance; `--json` for machine output; secrets
+  (`SEANCE_LLM_API_KEY`) are always masked. `[pii].name_rules` adds
+  purely-additive user-declared column-name hints for the built-in PII
+  detectors (never suppresses a built-in finding). Unknown top-level
+  keys warn but don't fail (forward compat); unknown keys under
+  `[llm]`, `[pii]`, `[watch]`, `[render]` are hard errors. Closes #45.
 - **Watch mode** — `seance watch <file>` re-summons the profile every
   time the file changes on disk, with an event-driven fast path via the
   optional `[watch]` extra (`pip install schema-seance[watch]`, backed
